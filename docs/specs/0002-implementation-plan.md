@@ -1,12 +1,10 @@
-# Spec: V1 Implementation Plan (Updated)
+# Spec: V1 Implementation Plan
 
 ## Problem
-The architectural spec is locked, and we want a thin, debuggable v1 that actually behaves like a single-model, multi-peer
-system (Coordinator + specialist peers) while staying close to pi-mono primitives.
+Implement a v1 single-model, multi-peer system (Coordinator + specialist peers) using pi-mono primitives.
 
-This repo started as a scaffold and now includes a first working cut of the runtime. The remaining work is mostly about
-making delegation + tooling + logging match the v1 spec expectations (structured handoffs, bounded traces, safer tool
-policy), and adding a local PI TUI entrypoint.
+The repo contains a baseline runtime. Remaining work is to make delegation, tool safety, and persistence match the v1
+spec expectations.
 
 ## Status (as of 2026-04-04)
 Implemented (baseline):
@@ -19,14 +17,14 @@ Implemented (baseline):
 - Telegram gateway routes IO through the runtime (`src/telegram/startTelegramBot.ts`, `src/index.ts`)
 
 Not implemented yet (spec gaps):
-- Structured peer result contract (JSON) + parsing/validation
+- Structured peer result reporting via tool call (`peer_report`) + fallback
 - Runtime JSONL trace + bounded retention
 - Artifact store (minimal)
 - Argument-level tool safety policy (path/timeout), beyond tool-name allowlists
 - PI TUI entrypoint
 
 ## Scope
-This spec covers the code required to finish and harden the v1 runtime around the existing baseline.
+This spec covers the remaining code to complete v1 around the existing baseline runtime.
 
 In scope:
 - Coordinator runtime
@@ -59,10 +57,10 @@ Out of scope:
 - The Coordinator must hand peers a compact structured task envelope (host-defined shape).
 - A peer must return a compact structured result (host-defined shape).
 - The host runtime owns the contract shape and parsing/validation. The model only fills it.
-- v1 should be robust to “non-JSON” peer responses:
-  - attempt strict parse first
-  - fall back to treating the peer’s reply as plain text summary
-  - log parse failures for debugging
+- Prefer tool-first reporting:
+  - peers call `peer_report` with the structured result
+  - the runtime reads the structured payload from the tool result `details`
+- Fallback: if no `peer_report` tool call occurs, use the peer’s last assistant text as `summary`.
 
 ### Tools
 - Tools remain config-gated per agent.
@@ -85,14 +83,15 @@ Out of scope:
 ### Interfaces
 - Telegram should talk to the Coordinator runtime, not directly to a raw `AgentSession`.
 - PI TUI should use the same runtime path as Telegram.
-- Interface code should stay thin and not duplicate orchestration logic.
+- Interface code should route messages into the runtime and not duplicate orchestration logic.
 
 ## Constraints
-- Keep the implementation thin and native to pi-mono.
+- Reuse pi-mono components; add only project-specific glue.
 - Prefer adding small modules over framework-style abstractions.
 - Do not move prompt content into config.
 - Do not rebuild session persistence, compaction, or resource loading already provided by pi-mono.
-- Keep the first cut debuggable with plain files and logs.
+- Keep operational state in plain files (sessions, traces, artifacts).
+- Runtime state must live outside the repo (default: `~/runs/pi-ghosty`), with an env override.
 
 ## Module Plan
 ### Phase 1: Baseline runtime (DONE)
@@ -130,8 +129,7 @@ Files:
   - return `details` with structured result when available
 
 Implementation note:
-- Keep the handoff prompt boring and strict: “Return ONLY a single JSON object matching this schema”.
-  If we later need richer results, we can extend the schema without reworking the host plumbing.
+- Keep the handoff prompt strict: “Return ONLY a single JSON object matching this schema”.
 
 ### Phase 3: Tool policy hardening (NEXT)
 Primary deliverable: safety checks beyond tool-name allowlists.
@@ -144,8 +142,8 @@ Files:
   - register the new extension for all sessions
 
 Notes:
-- This should not require a large config redesign for v1. Start with hard-coded safe defaults (project-root only),
-  then optionally add config overrides later.
+- This should not require a config redesign for v1. Start with project-root-only defaults, then optionally add config
+  overrides later.
 
 ### Phase 4: Trace + artifacts (NEXT)
 Primary deliverable: runtime-level JSONL trace and a minimal artifact store.
@@ -162,14 +160,14 @@ Files:
     - delegation start/end
     - tool call block reasons (when available)
 
-### Phase 5: PI TUI (NEXT / OPTIONAL for strict v1)
-Primary deliverable: local UI entrypoint using the exact same runtime path as Telegram.
+### Phase 5: PI TUI (NEXT / OPTIONAL)
+Primary deliverable: local UI entrypoint using the same runtime path as Telegram.
 
 Files:
 - `src/telegram/startTelegramBot.ts`
   - already routes messages into the runtime
 - `src/tui/startTui.ts`
-  - implement a minimal local loop (pi-tui if we adopt it, or a temporary stdin loop)
+  - implement a minimal local loop
 - `src/index.ts`
   - bootstrap services and choose interfaces
 
@@ -191,8 +189,7 @@ Files:
 3. Add JSONL trace + minimal artifact store.
 4. Add PI TUI (optional for strict v1; required for parity with spec).
 
-This order matters because the delegation contract determines what can be logged and reused, and tool policy hardening
-defines what peers can safely do.
+This order ensures structured results exist before logging/artifacts depend on them.
 
 ## Acceptance Criteria
 - Baseline (met today):
@@ -212,7 +209,7 @@ defines what peers can safely do.
 
 ## Open Questions
 - How explicit the coordinator’s delegation trigger should be in v1 (once structured results exist):
-  - prompt-driven with a strict output contract (recommended)
-  - a dedicated delegation tool exposed only to the coordinator (already exists; likely keep)
+  - prompt-driven with a strict output contract
+  - a dedicated delegation tool exposed only to the coordinator
 - Whether runtime traces should include full peer replies or only summarized records.
 - Whether the first PI TUI cut should be shipped in v1 or immediately after Telegram runtime parity.

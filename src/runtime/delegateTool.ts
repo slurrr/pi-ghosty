@@ -1,6 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import { defineTool } from "@mariozechner/pi-coding-agent";
-import type { DelegateRequest, PeerResult } from "./contracts.js";
+import { delegateRequestSchema, type DelegateRequest, type PeerResult } from "./contracts.js";
 
 export type DelegateHandler = (request: DelegateRequest) => Promise<PeerResult>;
 
@@ -21,10 +21,15 @@ export function createDelegateTool(delegate: DelegateHandler) {
       expectedOutput: Type.Optional(Type.String()),
     }),
     execute: async (_toolCallId, params) => {
-      const request = params as DelegateRequest;
+      const parsedRequest = delegateRequestSchema.safeParse(params);
+      if (!parsedRequest.success) {
+        throw new Error(`Invalid delegate request: ${parsedRequest.error.message}`);
+      }
+      const request = parsedRequest.data;
       const result = await delegate(request);
+
       return {
-        content: [{ type: "text", text: result.summary }],
+        content: [{ type: "text", text: result.output.summary }],
         details: result,
       };
     },

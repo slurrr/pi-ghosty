@@ -1,8 +1,12 @@
 import type { ExtensionFactory } from "@mariozechner/pi-coding-agent";
 import type { GhostyConfig } from "../config/schema.js";
 
-export function toolGatingExtensionFactory(config: GhostyConfig, agentName: string): ExtensionFactory {
-  const allowed = new Set(config.agents[agentName]?.tools ?? []);
+export function toolGatingExtensionFactory(
+  config: GhostyConfig,
+  agentName: string,
+  extraAllowedTools: string[] = [],
+): ExtensionFactory {
+  const allowed = new Set([...((config.agents[agentName]?.tools as string[]) ?? []), ...extraAllowedTools]);
 
   return (pi) => {
     pi.on("tool_call", (event) => {
@@ -16,4 +20,3 @@ export function toolGatingExtensionFactory(config: GhostyConfig, agentName: stri
     });
   };
 }
-

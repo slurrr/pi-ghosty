@@ -19,6 +19,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import type { Model } from "@mariozechner/pi-ai";
 import { toolGatingExtensionFactory } from "../extensions/toolGatingExtension.js";
+import { toolPolicyExtensionFactory } from "../extensions/toolPolicyExtension.js";
 import { memoryExtensionFactory } from "../extensions/memoryExtension.js";
 import type { GhostyConfig } from "../config/schema.js";
 import type { Env } from "../env.js";
@@ -45,6 +46,7 @@ function buildVllmModel(env: Env, config: GhostyConfig): Model<"openai-completio
 
 export interface CreateGhostySessionArgs {
   rootDir: string;
+  runDir: string;
   env: Env;
   config: GhostyConfig;
   agentName: string;
@@ -52,13 +54,13 @@ export interface CreateGhostySessionArgs {
 }
 
 export async function createGhostySession(args: CreateGhostySessionArgs) {
-  const { rootDir, env, config, agentName, customTools } = args;
+  const { rootDir, runDir, env, config, agentName, customTools } = args;
 
-  const sessionDir = resolve(rootDir, "data", "sessions", agentName);
+  const sessionDir = resolve(runDir, "data", "sessions", agentName);
   mkdirSync(sessionDir, { recursive: true });
 
   const sessionManager = SessionManager.continueRecent(rootDir, sessionDir);
-  const settingsManager = SettingsManager.create(rootDir);
+  const settingsManager = SettingsManager.create(runDir);
 
   const authStorage = AuthStorage.inMemory();
   authStorage.setRuntimeApiKey("vllm", "dummy");
@@ -84,9 +86,12 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
 
   const peerParts = loadPeerPromptParts(rootDir, agentName);
 
+  const sessionId = sessionManager.getSessionId();
+  const internalAllowedTools = agentName === "coordinator" ? [] : ["peer_report"];
   const extensionFactories: ExtensionFactory[] = [
-    toolGatingExtensionFactory(config, agentName),
-    memoryExtensionFactory(env, config, agentName, sessionManager.getSessionId()),
+    toolPolicyExtensionFactory(config, agentName, sessionId, { projectRoot: rootDir, runDir }),
+    toolGatingExtensionFactory(config, agentName, internalAllowedTools),
+    memoryExtensionFactory(env, config, agentName, sessionId),
   ];
 
   const resourceLoader = new DefaultResourceLoader({
@@ -115,7 +120,7 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
   });
 
   const allowedTools = config.agents[agentName]?.tools ?? [];
-  session.setActiveToolsByName(allowedTools);
+  session.setActiveToolsByName([...allowedTools, ...internalAllowedTools]);
 
   return { session, sessionManager };
 }
