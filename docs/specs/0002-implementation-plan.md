@@ -14,7 +14,7 @@ Implemented (baseline):
 - Tool allowlist gating by agent (`src/extensions/toolGatingExtension.ts`)
 - Hindsight recall/retain hooks (`src/extensions/memoryExtension.ts`)
 - Coordinator + peer session lifecycle + delegation via a `delegate` tool (`src/runtime/*`)
-- Telegram gateway routes IO through the runtime (`src/telegram/startTelegramBot.ts`, `src/index.ts`)
+- TUI interface hosted on coordinator session (`src/tui/startTui.ts`, `src/index.ts`)
 
 Not implemented yet (spec gaps):
 - Structured peer result reporting via tool call (`peer_report`) + fallback
@@ -32,8 +32,8 @@ In scope:
 - Structured delegation contract
 - Tool safety policy (at least: shell timeout, file path boundaries)
 - Session trace and artifact persistence
-- Telegram integration with the coordinator runtime
 - PI TUI entrypoint
+- Telegram via upstream `pi-telegram` extension (optional capability)
 
 Out of scope:
 - Parallel peer execution
@@ -82,8 +82,8 @@ Out of scope:
 - Add a minimal artifact store for reusable outputs worth re-injecting.
 
 ### Interfaces
-- Telegram should talk to the Coordinator runtime, not directly to a raw `AgentSession`.
-- PI TUI should use the same runtime path as Telegram.
+- Primary interface is pi TUI.
+- Telegram is enabled via upstream `pi-telegram` extension (see `docs/decisions/0005-telegram-via-pi-telegram.md`).
 - Interface code should route messages into the runtime and not duplicate orchestration logic.
 - Support explicit peer addressing via input prefix (see `docs/decisions/0003-explicit-peer-addressing.md`).
 
@@ -163,11 +163,9 @@ Files:
     - tool call block reasons (when available)
 
 ### Phase 5: PI TUI (NEXT / OPTIONAL)
-Primary deliverable: local UI entrypoint using the same runtime path as Telegram.
+Primary deliverable: local UI entrypoint hosted on the coordinator session.
 
 Files:
-- `src/telegram/startTelegramBot.ts`
-  - already routes messages into the runtime
 - `src/tui/startTui.ts`
   - implement a minimal local loop
 - `src/index.ts`

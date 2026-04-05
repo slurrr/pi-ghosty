@@ -6,7 +6,7 @@ This is a working document. It describes current structure without locking futur
 
 ### Frontends (IO)
 - **TUI**: pi interactive mode hosted on the coordinator session (`src/tui/startTui.ts`).
-- **Telegram**: Telegraf bot that forwards messages to the coordinator (`src/telegram/startTelegramBot.ts`).
+- **Telegram**: provided via upstream `pi-telegram` extension (installed separately; see `docs/decisions/0005-telegram-via-pi-telegram.md`).
 
 ### Runtime (orchestration)
 - `GhostyRuntime` owns:
@@ -56,4 +56,3 @@ Fallback:
 - tool allowlist gating: `src/extensions/toolGatingExtension.ts`
 - tool policy + tool trace: `src/extensions/toolPolicyExtension.ts`
 - memory retain/recall: `src/extensions/memoryExtension.ts`
-

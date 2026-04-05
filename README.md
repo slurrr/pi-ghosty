@@ -3,7 +3,7 @@
 Native (TypeScript) single-model multi-peer agent host built on pi-mono packages, with:
 - vLLM (`/v1/chat/completions`) as the single local model backend
 - Hindsight for long-term memory (retain-all + observations)
-- Telegram gateway (single-user v1)
+- Telegram capability via upstream `pi-telegram` extension (optional)
 
 ## Prereqs
 - Node.js (tested with Node 24)
@@ -25,4 +25,4 @@ npm run dev
 - Config lives in `pi-agent.json`.
 - Shared system prompt addendum is `.pi/APPEND_SYSTEM.md` (pi default system prompt is used).
 - Peer prompt parts live in `peers/<peer>/*.md` (all `.md` in that folder are appended in lexicographic order).
-- Default interface is TUI. Set `GHOSTY_INTERFACE=telegram` to run the Telegram gateway.
+- Interface is pi TUI (primary). For Telegram, use the upstream `pi-telegram` extension (see `docs/decisions/0005-telegram-via-pi-telegram.md`).

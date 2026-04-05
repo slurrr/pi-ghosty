@@ -2,7 +2,6 @@ import "dotenv/config";
 import { loadConfig } from "./config/loadConfig.js";
 import { loadEnv, resolveRunDir } from "./env.js";
 import { GhostyRuntime } from "./runtime/ghostyRuntime.js";
-import { startTelegramBot } from "./telegram/startTelegramBot.js";
 import { startTui } from "./tui/startTui.js";
 
 async function main() {
@@ -17,17 +16,6 @@ async function main() {
     env,
     config,
   });
-
-  if (env.GHOSTY_INTERFACE === "telegram") {
-    await startTelegramBot(env, runtime);
-    console.log("pi-ghosty telegram gateway started");
-    return;
-  }
-
-  if (env.GHOSTY_INTERFACE === "both") {
-    await startTelegramBot(env, runtime);
-    console.log("pi-ghosty telegram gateway started");
-  }
 
   await startTui(runtime);
 }
