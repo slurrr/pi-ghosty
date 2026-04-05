@@ -1,4 +1,5 @@
 import { mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import {
   AuthStorage,
@@ -23,6 +24,8 @@ import { toolPolicyExtensionFactory } from "../extensions/toolPolicyExtension.js
 import { memoryExtensionFactory } from "../extensions/memoryExtension.js";
 import { systemDebugExtensionFactory } from "../extensions/systemDebugExtension.js";
 import { explicitPeerAddressingExtensionFactory } from "../extensions/explicitPeerAddressingExtension.js";
+import { systemPromptTraceExtensionFactory } from "../extensions/systemPromptTraceExtension.js";
+import { JsonlTrace } from "../logging/jsonlTrace.js";
 import type { GhostyConfig } from "../config/schema.js";
 import type { Env } from "../env.js";
 import { loadPeerPromptParts } from "../prompts/loadPeerPromptParts.js";
@@ -79,6 +82,10 @@ function overridePiFirstSentence(base: string | undefined, agentName: string): s
   return `${replacement}\n\n${base}`;
 }
 
+function sha256(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
+
 export interface CreateGhostySessionArgs {
   rootDir: string;
   runDir: string;
@@ -123,9 +130,21 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
 
   const sessionId = sessionManager.getSessionId();
   const internalAllowedTools = agentName === "coordinator" ? [] : ["peer_report"];
+  const debugAll = env.GHOSTY_DEBUG_ALL;
+  const traceSystemPrompt = debugAll || env.GHOSTY_TRACE_SYSTEM_PROMPT;
+  const traceToolGating = debugAll || env.GHOSTY_DEBUG_TOOL_GATING;
+
   const extensionFactories: ExtensionFactory[] = [
+    ...(traceSystemPrompt
+      ? [systemPromptTraceExtensionFactory({ runDir, agentName, sessionId })]
+      : []),
     toolPolicyExtensionFactory(config, agentName, sessionId, { projectRoot: rootDir, runDir }),
-    toolGatingExtensionFactory(config, agentName, internalAllowedTools),
+    toolGatingExtensionFactory(config, agentName, internalAllowedTools, {
+      runDir,
+      sessionId,
+      projectTag: config.defaults.projectTag,
+      traceBlocks: traceToolGating,
+    }),
     memoryExtensionFactory(env, config, agentName, sessionId),
     systemDebugExtensionFactory(),
     explicitPeerAddressingExtensionFactory(agentName),
@@ -159,6 +178,30 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
 
   const allowedTools = config.agents[agentName]?.tools ?? [];
   session.setActiveToolsByName([...allowedTools, ...internalAllowedTools]);
+
+  const agentTrace = JsonlTrace.forAgent(runDir, agentName, sessionId);
+  if (debugAll || env.GHOSTY_DEBUG_TOOL_SURFACE) {
+    await agentTrace.append({
+      type: "tool_surface",
+      projectTag: config.defaults.projectTag,
+      agentName,
+      sessionId,
+      tools: [...allowedTools, ...internalAllowedTools],
+    });
+  }
+  if (debugAll || env.GHOSTY_DEBUG_PROMPT_PARTS) {
+    await agentTrace.append({
+      type: "prompt_parts",
+      projectTag: config.defaults.projectTag,
+      agentName,
+      sessionId,
+      files: peerParts.files.map((f) => ({
+        path: f.path,
+        sha256: sha256(f.content),
+        length: f.content.length,
+      })),
+    });
+  }
 
   return { session, sessionManager, services, extensionsResult, modelFallbackMessage };
 }
