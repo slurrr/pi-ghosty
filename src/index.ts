@@ -3,6 +3,7 @@ import { loadConfig } from "./config/loadConfig.js";
 import { loadEnv, resolveRunDir } from "./env.js";
 import { GhostyRuntime } from "./runtime/ghostyRuntime.js";
 import { startTelegramBot } from "./telegram/startTelegramBot.js";
+import { startTui } from "./tui/startTui.js";
 
 async function main() {
   const rootDir = process.cwd();
@@ -17,10 +18,18 @@ async function main() {
     config,
   });
 
-  // v1: bring up Telegram gateway and route all IO through coordinator.
-  await startTelegramBot(env, runtime);
+  if (env.GHOSTY_INTERFACE === "telegram") {
+    await startTelegramBot(env, runtime);
+    console.log("pi-ghosty telegram gateway started");
+    return;
+  }
 
-  console.log("pi-ghosty telegram gateway started");
+  if (env.GHOSTY_INTERFACE === "both") {
+    await startTelegramBot(env, runtime);
+    console.log("pi-ghosty telegram gateway started");
+  }
+
+  await startTui(runtime);
 }
 
 main().catch((err) => {

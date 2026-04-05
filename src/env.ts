@@ -13,6 +13,7 @@ const envSchema = z.object({
   HINDSIGHT_BANK_ID: z.string().default("pi-ghosty"),
 
   GHOSTY_RUN_DIR: z.string().optional(),
+  GHOSTY_INTERFACE: z.enum(["tui", "telegram", "both"]).default("tui"),
 });
 
 export type Env = z.infer<typeof envSchema>;

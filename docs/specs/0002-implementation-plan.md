@@ -61,6 +61,7 @@ Out of scope:
   - peers call `peer_report` with the structured result
   - the runtime reads the structured payload from the tool result `details`
 - Fallback: if no `peer_report` tool call occurs, use the peer’s last assistant text as `summary`.
+- If `peer_report` is missing, retry once with a minimal follow-up instruction (see `docs/decisions/0004-peer-report-retry.md`).
 
 ### Tools
 - Tools remain config-gated per agent.
@@ -84,6 +85,7 @@ Out of scope:
 - Telegram should talk to the Coordinator runtime, not directly to a raw `AgentSession`.
 - PI TUI should use the same runtime path as Telegram.
 - Interface code should route messages into the runtime and not duplicate orchestration logic.
+- Support explicit peer addressing via input prefix (see `docs/decisions/0003-explicit-peer-addressing.md`).
 
 ## Constraints
 - Reuse pi-mono components; add only project-specific glue.

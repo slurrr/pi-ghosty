@@ -23,6 +23,6 @@ npm run dev
 
 ## Notes
 - Config lives in `pi-agent.json`.
-- Shared system prompt base is `.pi/SYSTEM.md`.
+- Shared system prompt addendum is `.pi/APPEND_SYSTEM.md` (pi default system prompt is used).
 - Peer prompt parts live in `peers/<peer>/*.md` (all `.md` in that folder are appended in lexicographic order).
-
+- Default interface is TUI. Set `GHOSTY_INTERFACE=telegram` to run the Telegram gateway.

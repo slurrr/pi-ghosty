@@ -1,4 +1,4 @@
-import type { AgentSession } from "@mariozechner/pi-coding-agent";
+import type { AgentSession, AgentSessionServices } from "@mariozechner/pi-coding-agent";
 import type { Env } from "../env.js";
 import type { GhostyConfig } from "../config/schema.js";
 import { createGhostySession } from "../pi/createSession.js";
@@ -45,6 +45,8 @@ interface SessionHandle {
   session: AgentSession;
   sessionId: string;
   sessionState: "new" | "resumed";
+  services?: AgentSessionServices;
+  modelFallbackMessage?: string;
 }
 
 export class GhostyRuntime {
@@ -67,7 +69,7 @@ export class GhostyRuntime {
     };
     const delegateTool = createDelegateTool((request) => delegateHandler(request));
 
-    const { session: coordinatorSession, sessionManager } = await createGhostySession({
+    const { session: coordinatorSession, sessionManager, services, modelFallbackMessage } = await createGhostySession({
       rootDir,
       runDir,
       env,
@@ -80,6 +82,8 @@ export class GhostyRuntime {
       session: coordinatorSession,
       sessionId: sessionManager.getSessionId(),
       sessionState: sessionManager.getEntries().length > 0 ? "resumed" : "new",
+      services,
+      modelFallbackMessage,
     } as SessionHandle;
 
     const trace = JsonlTrace.forRuntime(runDir, coordinator.sessionId);
@@ -95,13 +99,35 @@ export class GhostyRuntime {
     return this.coordinator.session;
   }
 
-  async handleCoordinatorMessage(text: string): Promise<string> {
+  getCoordinatorHandle(): { session: AgentSession; sessionId: string; sessionState: "new" | "resumed" } {
+    return {
+      session: this.coordinator.session,
+      sessionId: this.coordinator.sessionId,
+      sessionState: this.coordinator.sessionState,
+    };
+  }
+
+  getCoordinatorServices(): AgentSessionServices {
+    if (!this.coordinator.services) {
+      throw new Error("Coordinator services not available");
+    }
+    return this.coordinator.services;
+  }
+
+  getCoordinatorModelFallbackMessage(): string | undefined {
+    return this.coordinator.modelFallbackMessage;
+  }
+
+  async handleCoordinatorMessage(
+    text: string,
+    options?: { streamingBehavior?: "steer" | "followUp" },
+  ): Promise<string> {
     await this.trace.append({
       type: "user_message",
       source: "coordinator",
       text,
     });
-    await this.coordinator.session.prompt(text, { source: "extension" });
+    await this.coordinator.session.prompt(text, { source: "extension", streamingBehavior: options?.streamingBehavior });
     const reply = lastAssistantText(this.coordinator.session);
     await this.trace.append({
       type: "coordinator_reply",
@@ -174,9 +200,38 @@ export class GhostyRuntime {
       output = reportOutput;
       reportSource = "tool";
     } else {
-      rawText = lastAssistantText(peer.session);
-      output = peerOutputSchema.parse({ summary: rawText?.trim() ? rawText.trim() : "(no peer report)" });
-      reportSource = "text";
+      await this.trace.append({
+        type: "peer_report_missing",
+        peerName: normalized.peerName,
+        peerSessionId: peer.sessionId,
+      });
+
+      // Retry once with a minimal follow-up instruction to call peer_report.
+      const retryBefore = peer.session.messages.length;
+      await peer.session.prompt(
+        'Call the "peer_report" tool now with your result. Do not write additional text.',
+        { source: "extension" },
+      );
+      const retryNewMessages = peer.session.messages.slice(retryBefore);
+      for (let i = retryNewMessages.length - 1; i >= 0; i--) {
+        const m: any = retryNewMessages[i];
+        if (m?.role !== "toolResult") continue;
+        if (m?.toolName !== "peer_report") continue;
+        const parsed = peerOutputSchema.safeParse(m.details);
+        if (parsed.success) {
+          reportOutput = parsed.data;
+        }
+        break;
+      }
+
+      if (reportOutput) {
+        output = reportOutput;
+        reportSource = "tool";
+      } else {
+        rawText = lastAssistantText(peer.session);
+        output = peerOutputSchema.parse({ summary: rawText?.trim() ? rawText.trim() : "(no peer report)" });
+        reportSource = "text";
+      }
     }
 
     if (Array.isArray(output.artifacts)) {
