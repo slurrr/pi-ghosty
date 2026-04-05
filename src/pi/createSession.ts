@@ -132,13 +132,24 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
   const internalAllowedTools = agentName === "coordinator" ? [] : ["peer_report"];
   const debugAll = env.GHOSTY_DEBUG_ALL;
   const traceSystemPrompt = debugAll || env.GHOSTY_TRACE_SYSTEM_PROMPT;
-  const traceToolGating = debugAll || env.GHOSTY_DEBUG_TOOL_GATING;
+  const traceToolBlocks = debugAll || env.GHOSTY_DEBUG_TOOL_BLOCKS;
+  const traceToolGating = traceToolBlocks || env.GHOSTY_DEBUG_TOOL_GATING;
 
   const extensionFactories: ExtensionFactory[] = [
     ...(traceSystemPrompt
       ? [systemPromptTraceExtensionFactory({ runDir, agentName, sessionId })]
       : []),
-    toolPolicyExtensionFactory(config, agentName, sessionId, { projectRoot: rootDir, runDir }),
+    toolPolicyExtensionFactory(
+      config,
+      agentName,
+      sessionId,
+      { projectRoot: rootDir, runDir },
+      {
+        traceCalls: false,
+        traceResults: false,
+        traceBlocks: traceToolBlocks,
+      },
+    ),
     toolGatingExtensionFactory(config, agentName, internalAllowedTools, {
       runDir,
       sessionId,

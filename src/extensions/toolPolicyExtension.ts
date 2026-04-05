@@ -39,8 +39,12 @@ export function toolPolicyExtensionFactory(
   agentName: string,
   sessionId: string,
   paths: { projectRoot: string; runDir: string },
+  options?: { traceCalls?: boolean; traceResults?: boolean; traceBlocks?: boolean },
 ): ExtensionFactory {
   const projectTag = config.defaults.projectTag;
+  const traceCalls = options?.traceCalls ?? false;
+  const traceResults = options?.traceResults ?? false;
+  const traceBlocks = options?.traceBlocks ?? false;
 
   return (pi) => {
     let trace: JsonlTrace | undefined;
@@ -48,7 +52,7 @@ export function toolPolicyExtensionFactory(
 
     pi.on("tool_call", async (event, ctx) => {
       void ctx;
-      const t = getTrace();
+      const t = traceCalls || traceBlocks ? getTrace() : undefined;
 
       if (isToolCallEventType("bash", event)) {
         const DEFAULT_TIMEOUT_MS = 60_000;
@@ -62,35 +66,40 @@ export function toolPolicyExtensionFactory(
 
       if (isToolCallEventType("write", event) || isToolCallEventType("edit", event)) {
         if (!isPathInsideRoot(paths.projectRoot, event.input.path)) {
-          await t.append({
-            type: "tool_policy_block",
-            projectTag,
-            agentName,
-            sessionId,
-            toolName: event.toolName,
-            toolCallId: event.toolCallId,
-            reason: "path_outside_root",
-            path: event.input.path,
-          });
+          if (traceBlocks && t) {
+            await t.append({
+              type: "tool_policy_block",
+              projectTag,
+              agentName,
+              sessionId,
+              toolName: event.toolName,
+              toolCallId: event.toolCallId,
+              reason: "path_outside_root",
+              path: event.input.path,
+            });
+          }
           return { block: true, reason: "File path must be inside the project root." };
         }
       }
 
-      await t.append({
-        type: "tool_call",
-        projectTag,
-        agentName,
-        sessionId,
-        toolName: event.toolName,
-        toolCallId: event.toolCallId,
-        summary: toolCallSummary(event),
-      });
+      if (traceCalls && t) {
+        await t.append({
+          type: "tool_call",
+          projectTag,
+          agentName,
+          sessionId,
+          toolName: event.toolName,
+          toolCallId: event.toolCallId,
+          summary: toolCallSummary(event),
+        });
+      }
 
       return undefined;
     });
 
     pi.on("tool_result", async (event, ctx) => {
       void ctx;
+      if (!traceResults) return undefined;
       const t = getTrace();
       await t.append({
         type: "tool_result",

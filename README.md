@@ -21,6 +21,18 @@ npm install
 npm run dev
 ```
 
+## Debug
+All debug flags default off (`0`/unset). Quick “turn everything on”:
+```bash
+npm run dev:debug
+```
+
+Useful flags:
+- `GHOSTY_TRACE_SYSTEM_PROMPT=1`: persist effective system prompt snapshots (only when it changes)
+- `GHOSTY_DEBUG_TOOL_BLOCKS=1`: trace tool blocks (policy + gating)
+- `GHOSTY_DEBUG_TOOL_SURFACE=1`: log allowed tool surface once per session
+- `GHOSTY_DEBUG_PROMPT_PARTS=1`: log which peer prompt part files were loaded (hashes)
+
 ## Notes
 - Config lives in `pi-agent.json`.
 - Shared system prompt addendum is `.pi/APPEND_SYSTEM.md` (pi default system prompt is used).
