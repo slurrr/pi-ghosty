@@ -11,17 +11,28 @@ export const delegateRequestSchema = z.object({
 
 export type DelegateRequest = z.infer<typeof delegateRequestSchema>;
 
+export const peerOutputSchema = z.object({
+  summary: z.string().min(1),
+  findings: z.array(z.string().min(1)).optional(),
+  artifacts: z.array(z.string().min(1)).optional(),
+  next_actions: z.array(z.string().min(1)).optional(),
+});
+
+export type PeerOutput = z.infer<typeof peerOutputSchema>;
+
 export interface PeerResult {
   peerName: (typeof ghostyPeerNames)[number];
   sessionId: string;
   sessionState: "new" | "resumed";
-  summary: string;
+  output: PeerOutput;
+  reportSource: "tool" | "text";
+  rawText?: string;
 }
 
 export function buildPeerDelegationPrompt(request: DelegateRequest, meta: { projectTag: string; coordinatorSessionId: string; peerSessionId: string; sessionState: "new" | "resumed" }): string {
   const sections = [
     `You are the ${request.peerName} peer in pi-ghosty.`,
-    `Role: boring specialist task rabbit.`,
+    `Role: specialist peer.`,
     `Project: ${meta.projectTag}`,
     `Coordinator session: ${meta.coordinatorSessionId}`,
     `Peer session: ${meta.peerSessionId}`,
@@ -39,6 +50,26 @@ export function buildPeerDelegationPrompt(request: DelegateRequest, meta: { proj
     sections.push("", "# Expected Output", request.expectedOutput.trim());
   }
 
-  sections.push("", "# Output Format", "Return a concise specialist answer the coordinator can relay to the user.");
+  sections.push(
+    "",
+    "# Output",
+    'Call the "peer_report" tool with your result.',
+    "Do not write additional text.",
+  );
   return sections.join("\n");
+}
+
+export function parsePeerOutput(rawText: string): { output: PeerOutput; parseError?: string } {
+  const trimmed = rawText.trim();
+  if (!trimmed) {
+    return { output: { summary: "(empty peer response)" }, parseError: "empty_response" };
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    const out = peerOutputSchema.parse(parsed);
+    return { output: out };
+  } catch (err) {
+    return { output: { summary: trimmed }, parseError: err instanceof Error ? err.message : String(err) };
+  }
 }

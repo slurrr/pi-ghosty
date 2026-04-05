@@ -1,13 +1,14 @@
 import { mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import {
   AuthStorage,
-  DefaultResourceLoader,
   ModelRegistry,
   SessionManager,
   SettingsManager,
   bashTool,
-  createAgentSession,
+  createAgentSessionFromServices,
+  createAgentSessionServices,
   editTool,
   type ExtensionFactory,
   type ToolDefinition,
@@ -19,7 +20,12 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import type { Model } from "@mariozechner/pi-ai";
 import { toolGatingExtensionFactory } from "../extensions/toolGatingExtension.js";
+import { toolPolicyExtensionFactory } from "../extensions/toolPolicyExtension.js";
 import { memoryExtensionFactory } from "../extensions/memoryExtension.js";
+import { systemDebugExtensionFactory } from "../extensions/systemDebugExtension.js";
+import { explicitPeerAddressingExtensionFactory } from "../extensions/explicitPeerAddressingExtension.js";
+import { systemPromptTraceExtensionFactory } from "../extensions/systemPromptTraceExtension.js";
+import { JsonlTrace } from "../logging/jsonlTrace.js";
 import type { GhostyConfig } from "../config/schema.js";
 import type { Env } from "../env.js";
 import { loadPeerPromptParts } from "../prompts/loadPeerPromptParts.js";
@@ -43,8 +49,46 @@ function buildVllmModel(env: Env, config: GhostyConfig): Model<"openai-completio
   };
 }
 
+function roleFirstSentence(agentName: string): string | undefined {
+  if (agentName === "coder") return undefined;
+  if (agentName === "coordinator") {
+    return "You are the coordinator agent for pi-ghosty. You talk to the user and delegate focused work to specialist peers.";
+  }
+  if (agentName === "researcher") {
+    return "You are the researcher peer for pi-ghosty. You do local repository/system research and report concise findings.";
+  }
+  if (agentName === "reviewer") {
+    return "You are the reviewer peer for pi-ghosty. You review changes for correctness, safety, and scope.";
+  }
+  if (agentName === "memory") {
+    return "You are the memory peer for pi-ghosty. You help tune and debug long-term memory behavior and retention.";
+  }
+  return undefined;
+}
+
+function overridePiFirstSentence(base: string | undefined, agentName: string): string | undefined {
+  if (!base) return base;
+  const replacement = roleFirstSentence(agentName);
+  if (!replacement) return base;
+
+  const piSentence =
+    "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.";
+
+  if (base.startsWith(piSentence)) {
+    return `${replacement}\n\n${base.slice(piSentence.length).trimStart()}`;
+  }
+
+  // Fallback if upstream wording changes: keep pi prompt, but lead with our role sentence.
+  return `${replacement}\n\n${base}`;
+}
+
+function sha256(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
+
 export interface CreateGhostySessionArgs {
   rootDir: string;
+  runDir: string;
   env: Env;
   config: GhostyConfig;
   agentName: string;
@@ -52,13 +96,13 @@ export interface CreateGhostySessionArgs {
 }
 
 export async function createGhostySession(args: CreateGhostySessionArgs) {
-  const { rootDir, env, config, agentName, customTools } = args;
+  const { rootDir, runDir, env, config, agentName, customTools } = args;
 
-  const sessionDir = resolve(rootDir, "data", "sessions", agentName);
+  const sessionDir = resolve(runDir, "data", "sessions", agentName);
   mkdirSync(sessionDir, { recursive: true });
 
   const sessionManager = SessionManager.continueRecent(rootDir, sessionDir);
-  const settingsManager = SettingsManager.create(rootDir);
+  const settingsManager = SettingsManager.create(runDir);
 
   const authStorage = AuthStorage.inMemory();
   authStorage.setRuntimeApiKey("vllm", "dummy");
@@ -84,38 +128,91 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
 
   const peerParts = loadPeerPromptParts(rootDir, agentName);
 
-  const extensionFactories: ExtensionFactory[] = [
-    toolGatingExtensionFactory(config, agentName),
-    memoryExtensionFactory(env, config, agentName, sessionManager.getSessionId()),
-  ];
+  const sessionId = sessionManager.getSessionId();
+  const internalAllowedTools = agentName === "coordinator" ? [] : ["peer_report"];
+  const debugAll = env.GHOSTY_DEBUG_ALL;
+  const traceSystemPrompt = debugAll || env.GHOSTY_TRACE_SYSTEM_PROMPT;
+  const traceToolBlocks = debugAll || env.GHOSTY_DEBUG_TOOL_BLOCKS;
+  const traceToolGating = traceToolBlocks || env.GHOSTY_DEBUG_TOOL_GATING;
 
-  const resourceLoader = new DefaultResourceLoader({
-    cwd: rootDir,
-    settingsManager,
-    extensionFactories,
-    appendSystemPromptOverride: (base) => {
-      const out = [...base];
-      if (peerParts.joined.trim()) out.push(peerParts.joined);
-      return out;
-    },
-  });
-  await resourceLoader.reload();
+  const extensionFactories: ExtensionFactory[] = [
+    ...(traceSystemPrompt
+      ? [systemPromptTraceExtensionFactory({ runDir, agentName, sessionId })]
+      : []),
+    toolPolicyExtensionFactory(
+      config,
+      agentName,
+      sessionId,
+      { projectRoot: rootDir, runDir },
+      {
+        traceCalls: false,
+        traceResults: false,
+        traceBlocks: traceToolBlocks,
+      },
+    ),
+    toolGatingExtensionFactory(config, agentName, internalAllowedTools, {
+      runDir,
+      sessionId,
+      projectTag: config.defaults.projectTag,
+      traceBlocks: traceToolGating,
+    }),
+    memoryExtensionFactory(env, config, agentName, sessionId),
+    systemDebugExtensionFactory(),
+    explicitPeerAddressingExtensionFactory(agentName),
+  ];
 
   const model = buildVllmModel(env, config);
 
-  const { session } = await createAgentSession({
+  const services = await createAgentSessionServices({
     cwd: rootDir,
+    settingsManager,
+    authStorage,
+    modelRegistry,
+    resourceLoaderOptions: {
+      extensionFactories,
+      systemPromptOverride: (base) => overridePiFirstSentence(base, agentName),
+      appendSystemPromptOverride: (base) => {
+        const out = [...base];
+        if (peerParts.joined.trim()) out.push(peerParts.joined);
+        return out;
+      },
+    },
+  });
+
+  const { session, extensionsResult, modelFallbackMessage } = await createAgentSessionFromServices({
+    services,
+    sessionManager,
     model,
     tools: [readTool, bashTool, editTool, writeTool, grepTool, findTool, lsTool],
     customTools,
-    resourceLoader,
-    sessionManager,
-    settingsManager,
-    modelRegistry,
   });
 
   const allowedTools = config.agents[agentName]?.tools ?? [];
-  session.setActiveToolsByName(allowedTools);
+  session.setActiveToolsByName([...allowedTools, ...internalAllowedTools]);
 
-  return { session, sessionManager };
+  const agentTrace = JsonlTrace.forAgent(runDir, agentName, sessionId);
+  if (debugAll || env.GHOSTY_DEBUG_TOOL_SURFACE) {
+    await agentTrace.append({
+      type: "tool_surface",
+      projectTag: config.defaults.projectTag,
+      agentName,
+      sessionId,
+      tools: [...allowedTools, ...internalAllowedTools],
+    });
+  }
+  if (debugAll || env.GHOSTY_DEBUG_PROMPT_PARTS) {
+    await agentTrace.append({
+      type: "prompt_parts",
+      projectTag: config.defaults.projectTag,
+      agentName,
+      sessionId,
+      files: peerParts.files.map((f) => ({
+        path: f.path,
+        sha256: sha256(f.content),
+        length: f.content.length,
+      })),
+    });
+  }
+
+  return { session, sessionManager, services, extensionsResult, modelFallbackMessage };
 }

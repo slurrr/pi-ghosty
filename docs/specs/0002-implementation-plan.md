@@ -1,32 +1,31 @@
-# Spec: V1 Implementation Plan (Updated)
+# Spec: V1 Implementation Plan
 
 ## Problem
-The architectural spec is locked, and we want a thin, debuggable v1 that actually behaves like a single-model, multi-peer
-system (Coordinator + specialist peers) while staying close to pi-mono primitives.
+Implement a v1 single-model, multi-peer system (Coordinator + specialist peers) using pi-mono primitives.
 
-This repo started as a scaffold and now includes a first working cut of the runtime. The remaining work is mostly about
-making delegation + tooling + logging match the v1 spec expectations (structured handoffs, bounded traces, safer tool
-policy), and adding a local PI TUI entrypoint.
+Primary goals:
+- Delegation that feels seamless (user talks to the Coordinator; peers are invisible unless asked).
+- Tool-first structured peer results (host-owned schema; model fills it by calling a tool).
+- Lightweight safety + trace/persistence rooted outside the repo.
 
 ## Status (as of 2026-04-04)
-Implemented (baseline):
+Implemented:
 - Config + env loading (`pi-agent.json`, `src/config/*`, `src/env.ts`)
 - Prompt-part assembly from `peers/<peer>/*.md` (`src/prompts/loadPeerPromptParts.ts`)
 - vLLM-backed `AgentSession` creation (`src/pi/createSession.ts`)
-- Tool allowlist gating by agent (`src/extensions/toolGatingExtension.ts`)
-- Hindsight recall/retain hooks (`src/extensions/memoryExtension.ts`)
 - Coordinator + peer session lifecycle + delegation via a `delegate` tool (`src/runtime/*`)
-- Telegram gateway routes IO through the runtime (`src/telegram/startTelegramBot.ts`, `src/index.ts`)
-
-Not implemented yet (spec gaps):
-- Structured peer result contract (JSON) + parsing/validation
-- Runtime JSONL trace + bounded retention
-- Artifact store (minimal)
-- Argument-level tool safety policy (path/timeout), beyond tool-name allowlists
-- PI TUI entrypoint
+- Structured peer result reporting via `peer_report` tool call (`src/runtime/peerReportTool.ts`) + validation (`src/runtime/contracts.ts`)
+- Fallback when `peer_report` is missing: retry once, then use last assistant text (`src/runtime/ghostyRuntime.ts`)
+- Tool allowlist gating per agent (`src/extensions/toolGatingExtension.ts`)
+- Argument-level tool safety (`src/extensions/toolPolicyExtension.ts`)
+- Runtime JSONL trace + minimal artifacts (`src/logging/jsonlTrace.ts`, `src/artifacts/store.ts`)
+- Hindsight recall/retain hooks (`src/extensions/memoryExtension.ts`)
+- PI TUI entrypoint hosted on coordinator session (`src/tui/startTui.ts`, `src/index.ts`)
+- Debug commands in TUI (`/system`, `/system guidelines`) via extension (`src/extensions/systemDebugExtension.ts`)
+- Explicit peer addressing (`@coder`, etc.) via extension (`src/extensions/explicitPeerAddressingExtension.ts`)
 
 ## Scope
-This spec covers the code required to finish and harden the v1 runtime around the existing baseline.
+This spec documents the v1 shape we’re building (and the choices that keep it lightweight).
 
 In scope:
 - Coordinator runtime
@@ -34,8 +33,8 @@ In scope:
 - Structured delegation contract
 - Tool safety policy (at least: shell timeout, file path boundaries)
 - Session trace and artifact persistence
-- Telegram integration with the coordinator runtime
 - PI TUI entrypoint
+- Telegram via upstream `pi-telegram` extension (optional capability)
 
 Out of scope:
 - Parallel peer execution
@@ -57,12 +56,14 @@ Out of scope:
 
 ### Delegation contract
 - The Coordinator must hand peers a compact structured task envelope (host-defined shape).
-- A peer must return a compact structured result (host-defined shape).
-- The host runtime owns the contract shape and parsing/validation. The model only fills it.
-- v1 should be robust to “non-JSON” peer responses:
-  - attempt strict parse first
-  - fall back to treating the peer’s reply as plain text summary
-  - log parse failures for debugging
+- A peer returns a compact structured result (host-defined shape) by calling a tool.
+- The host runtime owns the schema and validation; the model only fills fields.
+- Tool-first reporting:
+  - peers call `peer_report` once per delegation with the structured result
+  - the runtime reads the structured payload from the tool result `details` and validates it
+- Fallback (graceful):
+  - if no `peer_report` tool call occurs, retry once with a minimal follow-up instruction
+  - if still missing, use the peer’s last assistant text as `summary` (see `docs/decisions/0004-peer-report-retry.md`)
 
 ### Tools
 - Tools remain config-gated per agent.
@@ -83,95 +84,29 @@ Out of scope:
 - Add a minimal artifact store for reusable outputs worth re-injecting.
 
 ### Interfaces
-- Telegram should talk to the Coordinator runtime, not directly to a raw `AgentSession`.
-- PI TUI should use the same runtime path as Telegram.
-- Interface code should stay thin and not duplicate orchestration logic.
+- Primary interface is pi TUI.
+- Telegram is enabled via upstream `pi-telegram` extension (see `docs/decisions/0005-telegram-via-pi-telegram.md`).
+- Interface code should route messages into the runtime and not duplicate orchestration logic.
+- Support explicit peer addressing via input prefix (see `docs/decisions/0003-explicit-peer-addressing.md`).
 
 ## Constraints
-- Keep the implementation thin and native to pi-mono.
+- Reuse pi-mono components; add only project-specific glue.
 - Prefer adding small modules over framework-style abstractions.
 - Do not move prompt content into config.
 - Do not rebuild session persistence, compaction, or resource loading already provided by pi-mono.
-- Keep the first cut debuggable with plain files and logs.
+- Keep operational state in plain files (sessions, traces, artifacts).
+- Runtime state must live outside the repo (default: `~/runs/pi-ghosty`), with an env override.
 
 ## Module Plan
-### Phase 1: Baseline runtime (DONE)
-Primary deliverable: coordinator-driven multi-peer execution with persistent peer sessions.
+This section intentionally stays short: most behavior is captured in `docs/decisions/*` and in the code.
 
-Files:
-- `src/runtime/ghostyRuntime.ts`
-  - creates coordinator + peer sessions on demand
-  - injects the `delegate` tool into the coordinator
-  - sequential delegation to peers
-- `src/runtime/delegateTool.ts`
-  - tool definition: `delegate(peerName, task, context?, expectedOutput?)`
-- `src/runtime/contracts.ts`
-  - peer names + delegation prompt builder
-
-Notes:
-- Current peer result is “best-effort”: we return the peer’s last assistant text as `summary`.
-- The `delegateRequestSchema` is defined but not used for validation yet.
-
-### Phase 2: Structured delegation contract (NEXT)
-Primary deliverable: predictable, parseable peer results that the Coordinator can reliably consume.
-
-Files:
-- Update `src/runtime/contracts.ts`
-  - define `PeerResultV1` schema (zod) with fields:
-    - `summary` (required)
-    - `findings` (optional string[])
-    - `artifacts` (optional string[])
-    - `next_actions` (optional string[])
-- Update `src/runtime/ghostyRuntime.ts`
-  - parse the peer reply as JSON first
-  - fall back to plain-text summary if parsing fails
-- Update `src/runtime/delegateTool.ts`
-  - validate inputs with zod (or reuse zod schema directly)
-  - return `details` with structured result when available
-
-Implementation note:
-- Keep the handoff prompt boring and strict: “Return ONLY a single JSON object matching this schema”.
-  If we later need richer results, we can extend the schema without reworking the host plumbing.
-
-### Phase 3: Tool policy hardening (NEXT)
-Primary deliverable: safety checks beyond tool-name allowlists.
-
-Files:
-- Add `src/extensions/toolPolicyExtension.ts`
-  - enforce path boundaries for `write` / `edit`
-  - enforce timeout/output caps for `bash`
-- Update `src/pi/createSession.ts`
-  - register the new extension for all sessions
-
-Notes:
-- This should not require a large config redesign for v1. Start with hard-coded safe defaults (project-root only),
-  then optionally add config overrides later.
-
-### Phase 4: Trace + artifacts (NEXT)
-Primary deliverable: runtime-level JSONL trace and a minimal artifact store.
-
-Files:
-- Add `src/logging/jsonlTrace.ts`
-  - append structured runtime events under `data/traces/<sessionId>.jsonl`
-- Add `src/artifacts/store.ts`
-  - append/read artifact summaries under `data/artifacts/<project>.jsonl`
-- Update `src/runtime/ghostyRuntime.ts`
-  - emit trace events for:
-    - user message
-    - coordinator reply
-    - delegation start/end
-    - tool call block reasons (when available)
-
-### Phase 5: PI TUI (NEXT / OPTIONAL for strict v1)
-Primary deliverable: local UI entrypoint using the exact same runtime path as Telegram.
-
-Files:
-- `src/telegram/startTelegramBot.ts`
-  - already routes messages into the runtime
-- `src/tui/startTui.ts`
-  - implement a minimal local loop (pi-tui if we adopt it, or a temporary stdin loop)
-- `src/index.ts`
-  - bootstrap services and choose interfaces
+Key modules:
+- Orchestration: `src/runtime/ghostyRuntime.ts`
+- Delegation tool: `src/runtime/delegateTool.ts`
+- Peer reporting tool + schema: `src/runtime/peerReportTool.ts`, `src/runtime/contracts.ts`
+- Tool gating + safety: `src/extensions/toolGatingExtension.ts`, `src/extensions/toolPolicyExtension.ts`
+- Trace + artifacts: `src/logging/jsonlTrace.ts`, `src/artifacts/store.ts`
+- Session/prompt build: `src/pi/createSession.ts`, `peers/*/*.md`, `.pi/APPEND_SYSTEM.md`
 
 ## File Responsibilities
 - `src/pi/createSession.ts`
@@ -186,21 +121,16 @@ Files:
   - own coordinator behavior and peer orchestration
 
 ## Sequencing
-1. Finish structured delegation contract + parsing.
-2. Add tool policy hardening (argument-level safety).
-3. Add JSONL trace + minimal artifact store.
-4. Add PI TUI (optional for strict v1; required for parity with spec).
-
-This order matters because the delegation contract determines what can be logged and reused, and tool policy hardening
-defines what peers can safely do.
+For future work, prefer this order:
+1. Dogfood (TUI) and tighten prompts/contracts only where needed.
+2. Add determinism only when it pays for itself (runtime/extension support over “more prompting”).
+3. Add observability before adding new features.
 
 ## Acceptance Criteria
-- Baseline (met today):
-  - Telegram uses the runtime (not a raw `AgentSession.prompt()` call path).
-  - The Coordinator can delegate to at least one peer and resume that peer session on the next task.
-- Remaining for “spec-complete v1”:
-  - Peers return a structured result that the Coordinator can parse/validate (with plain-text fallback).
-  - Runtime events are written to JSONL with bounded retention.
+Met:
+- The Coordinator can delegate to a peer and reuse that peer session on subsequent tasks.
+- Peers report results via `peer_report` with a host-validated schema, with a graceful fallback path.
+- Runtime writes JSONL traces and stores minimal artifacts under an out-of-repo runDir (default: `~/runs/pi-ghosty`).
   - Tool policy hardening exists beyond tool-name allowlists.
   - PI TUI uses the same runtime path (or explicitly deferred with rationale).
 
@@ -212,7 +142,7 @@ defines what peers can safely do.
 
 ## Open Questions
 - How explicit the coordinator’s delegation trigger should be in v1 (once structured results exist):
-  - prompt-driven with a strict output contract (recommended)
-  - a dedicated delegation tool exposed only to the coordinator (already exists; likely keep)
+  - prompt-driven with a strict output contract
+  - a dedicated delegation tool exposed only to the coordinator
 - Whether runtime traces should include full peer replies or only summarized records.
 - Whether the first PI TUI cut should be shipped in v1 or immediately after Telegram runtime parity.
