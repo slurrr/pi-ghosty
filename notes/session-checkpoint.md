@@ -1,25 +1,34 @@
 # Current Goal
-Add lightweight debug visibility that transcripts don’t capture (system prompt snapshots, tool gating blocks, tool surface, prompt-part provenance), all behind env flags with a single “enable all” flag.
+Stabilize pi-ghosty for prompt/role iteration with strong observability:
+- tool visibility in traces (tool_call/tool_result)
+- Hindsight recall/retain timing/size traces
+- make session commands like `/new` behave like upstream pi
 
 # Current State
-- Multi-peer runtime works (coordinator delegates to peers; peers report via `peer_report`).
-- Run state lives under `~/runs/pi-ghosty` (sessions/traces/artifacts).
-- Telegram bridge is connected via upstream `pi-telegram` extension (messages prefixed `[telegram]`).
-- TUI supports `/system` and `/system guidelines` (live effective system prompt view).
-- Repo has local changes in progress (debug flags + logging).
+- Multi-peer runtime works: coordinator delegates; peers return structured results via `peer_report` (captured inside `delegate` tool result `details`).
+- Run state lives under `~/runs/pi-ghosty` (sessions, traces, system prompt snapshots).
+- System prompt snapshots are traced under `~/runs/pi-ghosty/data/system-prompts/<agent>/<sessionId>.jsonl`.
+- Hindsight is now reachable at `http://127.0.0.1:8888/health` and recall injection is active (adds `# Recalled Memory (...)` blocks).
+- `/new` now works (runtime factory no longer throws; coordinator session can be replaced in the TUI).
 
 # Decisions
-- Don’t persist system prompt by default; only capture it for debugging via explicit flags.
-- Keep debug signals in JSONL traces under runDir (cheap to inspect; not in “session transcript”).
+- Context window and max tokens are now config-driven in `pi-agent.json` under `defaults.model`.
+- Tool tracing was re-enabled via `toolPolicyExtensionFactory` using `GHOSTY_DEBUG_TOOL_BLOCKS` (logs tool_call/tool_result/tool_policy_block).
+- Memory can be disabled without touching code via `GHOSTY_DISABLE_MEMORY=1` (default enabled).
 
 # Open Problems
-- Confirm the new debug flags produce the expected files/events during real runs.
-- Decide whether to keep `toolPolicyExtension`/`toolGatingExtension` as extensions long-term or shift responsibility elsewhere (don’t duplicate pi unless it’s buying us something).
+- `/reload` still does not hot-reload the inline extension factories because they are not file-discovered `.pi/extensions/*` modules. Long-term direction: move ghosty behavior into project-local extensions to get true `/reload`.
+- Memory recall is noisy and can contain stale facts (e.g., recalling old contextWindow values). Needs a memory policy pass (retain/recall filtering).
+- Need to validate new memory timing traces show up in `~/runs/pi-ghosty/data/traces/<agent>/<sessionId>.jsonl` as `memory_recall`/`memory_retain`.
 
 # Resume Instructions
-1. `npm run dev:debug` to run with all debug flags enabled.
-2. In TUI, exercise a delegation turn and confirm:
-   - system prompt trace appears under `~/runs/pi-ghosty/data/system-prompts/<agent>/<sessionId>.jsonl`
-   - tool surface + prompt-part provenance events land in `~/runs/pi-ghosty/data/traces/<agent>/<sessionId>.jsonl`
-   - tool gating blocks emit `tool_gating_block` events in the agent trace.
-3. If noise is too high, switch to per-flag enabling (env vars in `src/env.ts`).
+1. Run with high visibility:
+   - `GHOSTY_DEBUG_ALL=1 GHOSTY_DEBUG_TOOL_BLOCKS=1 npm run dev`
+2. In TUI, do a simple delegation and verify traces include tool calls/results:
+   - `~/runs/pi-ghosty/data/traces/coordinator/<sessionId>.jsonl` now should contain `tool_call` / `tool_result` events.
+3. Verify memory timing events:
+   - look for `memory_recall` / `memory_retain` in `~/runs/pi-ghosty/data/traces/<agent>/<sessionId>.jsonl`.
+4. If you want to work on prompts without memory noise:
+   - run with `GHOSTY_DISABLE_MEMORY=1`.
+5. Longer-term refactor (pi-style hot reload):
+   - move inline extension factories into `.pi/extensions/` and remove `resourceLoaderOptions.extensionFactories` so `/reload` actually reloads ghosty behavior.

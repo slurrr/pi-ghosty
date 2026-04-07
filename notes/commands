@@ -1,0 +1,5 @@
+map config
+
+rg -n "agents\\[|tools\\b|projectTag|hindsight|vllm" pi-agent.json src/config src/pi/createSession.ts 
+
+

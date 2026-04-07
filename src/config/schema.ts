@@ -13,6 +13,10 @@ export const ghostyConfigSchema = z.object({
     hindsightBaseUrl: z.string().url(),
     hindsightBankId: z.string().min(1),
     projectTag: z.string().min(1),
+    model: z.object({
+      contextWindow: z.number().int().positive(),
+      maxTokens: z.number().int().positive(),
+    }),
   }),
   agents: z.record(z.string(), agentConfigSchema),
 });

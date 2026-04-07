@@ -39,6 +39,10 @@ export interface GhostyRuntimeOptions {
   runDir: string;
   env: Env;
   config: GhostyConfig;
+
+  // Optional override to support interactive runtime operations like /new and /resume.
+  coordinatorSessionManager?: import("@mariozechner/pi-coding-agent").SessionManager;
+  coordinatorSessionStartEvent?: import("@mariozechner/pi-coding-agent").SessionStartEvent;
 }
 
 interface SessionHandle {
@@ -46,6 +50,7 @@ interface SessionHandle {
   sessionId: string;
   sessionState: "new" | "resumed";
   services?: AgentSessionServices;
+  extensionsResult?: any;
   modelFallbackMessage?: string;
 }
 
@@ -63,19 +68,27 @@ export class GhostyRuntime {
   ) {}
 
   static async create(options: GhostyRuntimeOptions): Promise<GhostyRuntime> {
-    const { rootDir, runDir, env, config } = options;
+    const { rootDir, runDir, env, config, coordinatorSessionManager, coordinatorSessionStartEvent } = options;
     let delegateHandler = async (_request: DelegateRequest): Promise<PeerResult> => {
       throw new Error("Delegate handler is not ready");
     };
     const delegateTool = createDelegateTool((request) => delegateHandler(request));
 
-    const { session: coordinatorSession, sessionManager, services, modelFallbackMessage } = await createGhostySession({
+    const {
+      session: coordinatorSession,
+      sessionManager,
+      services,
+      extensionsResult,
+      modelFallbackMessage,
+    } = await createGhostySession({
       rootDir,
       runDir,
       env,
       config,
       agentName: "coordinator",
       customTools: [delegateTool],
+      sessionManager: coordinatorSessionManager,
+      sessionStartEvent: coordinatorSessionStartEvent,
     });
 
     const coordinator = {
@@ -83,6 +96,7 @@ export class GhostyRuntime {
       sessionId: sessionManager.getSessionId(),
       sessionState: sessionManager.getEntries().length > 0 ? "resumed" : "new",
       services,
+      extensionsResult,
       modelFallbackMessage,
     } as SessionHandle;
 
@@ -116,6 +130,13 @@ export class GhostyRuntime {
 
   getCoordinatorModelFallbackMessage(): string | undefined {
     return this.coordinator.modelFallbackMessage;
+  }
+
+  getCoordinatorExtensionsResult(): any {
+    if (!this.coordinator.extensionsResult) {
+      throw new Error("Coordinator extensionsResult not available");
+    }
+    return this.coordinator.extensionsResult;
   }
 
   async handleCoordinatorMessage(

@@ -11,6 +11,7 @@ import {
   createAgentSessionServices,
   editTool,
   type ExtensionFactory,
+  type SessionStartEvent,
   type ToolDefinition,
   findTool,
   grepTool,
@@ -40,8 +41,8 @@ function buildVllmModel(env: Env, config: GhostyConfig): Model<"openai-completio
     reasoning: false,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 32768,
-    maxTokens: 8192,
+    contextWindow: config.defaults.model.contextWindow,
+    maxTokens: config.defaults.model.maxTokens,
     compat: {
       supportsDeveloperRole: false,
       supportsReasoningEffort: false,
@@ -52,16 +53,29 @@ function buildVllmModel(env: Env, config: GhostyConfig): Model<"openai-completio
 function roleFirstSentence(agentName: string): string | undefined {
   if (agentName === "coder") return undefined;
   if (agentName === "coordinator") {
-    return "You are the coordinator agent for pi-ghosty. You talk to the user and delegate focused work to specialist peers.";
+    return (
+      "You are the coordinator agent for pi-ghosty and the only user-facing agent. " +
+      "Your job is to chat with the user, decide what work to do yourself vs delegate, and delegate focused tasks to specialist peers. " +
+      "Integrate peer results into a final answer for the user."
+    );
   }
   if (agentName === "researcher") {
-    return "You are the researcher peer for pi-ghosty. You do local repository/system research and report concise findings.";
+    return (
+      "You are the researcher peer for pi-ghosty (internal; not user-facing). " +
+      "Do local repository/system investigation only and report concise, reproducible findings back to the coordinator."
+    );
   }
   if (agentName === "reviewer") {
-    return "You are the reviewer peer for pi-ghosty. You review changes for correctness, safety, and scope.";
+    return (
+      "You are the reviewer peer for pi-ghosty (internal; not user-facing). " +
+      "Review proposed changes for correctness, safety, and scope drift, and report concrete issues and a short checklist back to the coordinator."
+    );
   }
   if (agentName === "memory") {
-    return "You are the memory peer for pi-ghosty. You help tune and debug long-term memory behavior and retention.";
+    return (
+      "You are the memory peer for pi-ghosty (internal; not user-facing). " +
+      "Focus on long-term memory behavior (recall/retain, tags, scopes, observations) and report recommendations back to the coordinator."
+    );
   }
   return undefined;
 }
@@ -93,15 +107,19 @@ export interface CreateGhostySessionArgs {
   config: GhostyConfig;
   agentName: string;
   customTools?: ToolDefinition[];
+
+  // Optional override to support interactive runtime operations like /new and /resume.
+  sessionManager?: SessionManager;
+  sessionStartEvent?: SessionStartEvent;
 }
 
 export async function createGhostySession(args: CreateGhostySessionArgs) {
-  const { rootDir, runDir, env, config, agentName, customTools } = args;
+  const { rootDir, runDir, env, config, agentName, customTools, sessionManager: sessionManagerOverride, sessionStartEvent } = args;
 
   const sessionDir = resolve(runDir, "data", "sessions", agentName);
   mkdirSync(sessionDir, { recursive: true });
 
-  const sessionManager = SessionManager.continueRecent(rootDir, sessionDir);
+  const sessionManager = sessionManagerOverride ?? SessionManager.continueRecent(rootDir, sessionDir);
   const settingsManager = SettingsManager.create(runDir);
 
   const authStorage = AuthStorage.inMemory();
@@ -120,8 +138,8 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
         reasoning: false,
         input: ["text"],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: 32768,
-        maxTokens: 8192,
+        contextWindow: config.defaults.model.contextWindow,
+        maxTokens: config.defaults.model.maxTokens,
       },
     ],
   } as any);
@@ -145,8 +163,8 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
       sessionId,
       { projectRoot: rootDir, runDir },
       {
-        traceCalls: false,
-        traceResults: false,
+        traceCalls: traceToolBlocks,
+        traceResults: traceToolBlocks,
         traceBlocks: traceToolBlocks,
       },
     ),
@@ -156,7 +174,7 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
       projectTag: config.defaults.projectTag,
       traceBlocks: traceToolGating,
     }),
-    memoryExtensionFactory(env, config, agentName, sessionId),
+    ...(env.GHOSTY_DISABLE_MEMORY ? [] : [memoryExtensionFactory(env, config, agentName, sessionId, { runDir })]),
     systemDebugExtensionFactory(),
     explicitPeerAddressingExtensionFactory(agentName),
   ];
@@ -170,6 +188,9 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
     modelRegistry,
     resourceLoaderOptions: {
       extensionFactories,
+      // Disable automatic AGENTS.md/CLAUDE.md context-file injection.
+      // Rationale: our workflow keeps machine/repo contracts out of the LLM system prompt by default.
+      agentsFilesOverride: (_current) => ({ agentsFiles: [] }),
       systemPromptOverride: (base) => overridePiFirstSentence(base, agentName),
       appendSystemPromptOverride: (base) => {
         const out = [...base];
@@ -182,6 +203,7 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
   const { session, extensionsResult, modelFallbackMessage } = await createAgentSessionFromServices({
     services,
     sessionManager,
+    sessionStartEvent,
     model,
     tools: [readTool, bashTool, editTool, writeTool, grepTool, findTool, lsTool],
     customTools,

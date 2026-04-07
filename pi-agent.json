@@ -3,7 +3,11 @@
     "vllmBaseUrl": "http://localhost:8002/v1",
     "hindsightBaseUrl": "http://localhost:8888",
     "hindsightBankId": "pi-ghosty",
-    "projectTag": "project:pi-ghosty"
+    "projectTag": "project:pi-ghosty",
+    "model": {
+      "contextWindow": 131072,
+      "maxTokens": 8192
+    }
   },
   "agents": {
     "coordinator": {

@@ -1,8 +1,10 @@
 import type { ExtensionFactory } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import { performance } from "node:perf_hooks";
 import type { GhostyConfig } from "../config/schema.js";
 import type { Env } from "../env.js";
 import { createHindsightClient } from "../memory/hindsight.js";
+import { JsonlTrace } from "../logging/jsonlTrace.js";
 
 function messagesToTranscript(messages: AgentMessage[]): string {
   const lines: string[] = [];
@@ -39,6 +41,7 @@ export function memoryExtensionFactory(
   config: GhostyConfig,
   agentName: string,
   sessionId: string,
+  paths: { runDir: string },
 ): ExtensionFactory {
   const hindsight = createHindsightClient({
     baseUrl: env.HINDSIGHT_BASE_URL || config.defaults.hindsightBaseUrl,
@@ -49,36 +52,61 @@ export function memoryExtensionFactory(
   const projectTag = env.PROJECT_TAG || config.defaults.projectTag;
 
   const baseTags = [projectTag, `agent:${agentName}`, `session:${sessionId}`];
+  const trace = JsonlTrace.forAgent(paths.runDir, agentName, sessionId);
 
   return (pi) => {
     pi.on("before_agent_start", async (event) => {
       // Keep recall bounded; we rely on observations + tags + reranking.
       const query = event.prompt;
-      const recalled = await hindsight.recall(bankId, query, {
-        max_tokens: 2048,
-        budget: "mid",
-        tags: [projectTag, `agent:${agentName}`],
-        tags_match: "all",
-        types: ["observation", "world", "experience"],
-      } as any);
+      const t0 = performance.now();
+      try {
+        const recalled = await hindsight.recall(bankId, query, {
+          max_tokens: 2048,
+          budget: "mid",
+          tags: [projectTag, `agent:${agentName}`],
+          tags_match: "all",
+          types: ["observation", "world", "experience"],
+        } as any);
 
-      const facts: any[] = (recalled as any)?.facts ?? (recalled as any)?.results ?? [];
-      if (!Array.isArray(facts) || facts.length === 0) {
+        const facts: any[] = (recalled as any)?.facts ?? (recalled as any)?.results ?? [];
+        const memoryLines = Array.isArray(facts)
+          ? facts
+              .slice(0, 30)
+              .map((f) => (typeof f.text === "string" ? `- ${f.text}` : null))
+              .filter((x): x is string => !!x)
+          : [];
+        const memoryBlock = memoryLines.join("\n");
+
+        const t1 = performance.now();
+        await trace.append({
+          type: "memory_recall",
+          projectTag,
+          bankId,
+          agentName,
+          sessionId,
+          ms: Math.round(t1 - t0),
+          queryLen: query.length,
+          factsCount: Array.isArray(facts) ? facts.length : null,
+          injectedLines: memoryLines.length,
+          injectedChars: memoryBlock.length,
+        });
+
+        if (!memoryBlock.trim()) return undefined;
+        const injected = `${event.systemPrompt}\n\n# Recalled Memory (${agentName})\n${memoryBlock}`;
+        return { systemPrompt: injected };
+      } catch (err: any) {
+        const t1 = performance.now();
+        await trace.append({
+          type: "memory_recall_error",
+          projectTag,
+          bankId,
+          agentName,
+          sessionId,
+          ms: Math.round(t1 - t0),
+          error: err?.message ?? String(err),
+        });
         return undefined;
       }
-
-      const memoryBlock = facts
-        .slice(0, 30)
-        .map((f) => (typeof f.text === "string" ? `- ${f.text}` : null))
-        .filter((x): x is string => !!x)
-        .join("\n");
-
-      if (!memoryBlock.trim()) {
-        return undefined;
-      }
-
-      const injected = `${event.systemPrompt}\n\n# Recalled Memory (${agentName})\n${memoryBlock}`;
-      return { systemPrompt: injected };
     });
 
     pi.on("agent_end", async (event) => {
@@ -86,18 +114,49 @@ export function memoryExtensionFactory(
       if (!transcript.trim()) return;
 
       const documentId = `${projectTag}/${agentName}/${sessionId}`;
-
-      await hindsight.retain(bankId, transcript, {
-        document_id: documentId,
-        context: "pi-ghosty agent session transcript",
-        tags: baseTags,
-        // v1: consolidate at durable scopes (project and agent), not per-session by default.
-        observation_scopes: {
-          mode: "custom",
-          scopes: [[projectTag], [`agent:${agentName}`]],
-        },
-      } as any);
+      const t0 = performance.now();
+      try {
+        await hindsight.retain(bankId, transcript, {
+          document_id: documentId,
+          context: "pi-ghosty agent session transcript",
+          tags: baseTags,
+          // v1: consolidate at durable scopes (project and agent), not per-session by default.
+          observation_scopes: {
+            mode: "custom",
+            scopes: [[projectTag], [`agent:${agentName}`]],
+          },
+        } as any);
+        const t1 = performance.now();
+        await trace.append({
+          type: "memory_retain",
+          projectTag,
+          bankId,
+          agentName,
+          sessionId,
+          ms: Math.round(t1 - t0),
+          documentId,
+          transcriptChars: transcript.length,
+          tags: baseTags,
+        });
+      } catch (err: any) {
+        const t1 = performance.now();
+        await trace.append({
+          type: "memory_retain_error",
+          projectTag,
+          bankId,
+          agentName,
+          sessionId,
+          ms: Math.round(t1 - t0),
+          documentId,
+          transcriptChars: transcript.length,
+          error: err?.message ?? String(err),
+        });
+      }
     });
+
+    // Reflect is not wired into pi-ghosty v1 yet. When we add it (manual or scheduled),
+    // instrument it with the same timing/size trace shape as retain/recall.
+    void hindsight;
   };
 }
 
