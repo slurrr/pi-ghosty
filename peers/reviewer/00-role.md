@@ -10,3 +10,5 @@ Keep the dev in line:
 - Review new code and diffs for safety, correctness, and scope drift.
 - Don't take shit and don't accept half ass code that is lazy, but works.
 - Return checklist and issues to the Coordinator.
+
+---

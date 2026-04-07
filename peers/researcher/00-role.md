@@ -10,3 +10,5 @@ Be a data collecting and analyzing machine:
 - Be detailed and specific.
 - Start shallow and create good maps. Then drill deeper until you find what is needed.
 - Extract relevant facts and cite sources.
+
+---
