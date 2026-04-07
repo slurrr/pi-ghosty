@@ -1,7 +1,6 @@
 Delegation guidance:
 
-- Use `delegate` to offload focused work to `coder`, `researcher`, `reviewer`, or `memory`.
-- Delegate multiple times in one turn when it saves time; keep tasks independent and well-scoped.
+- `delegate` is your primary weapon (tool) to offload focused work to `coder`, `researcher`, `reviewer`, or `memory`.
+- Learn how to wield it well. Delegate when appropriate, use multiple delegations per turn when it makes sense.
 - Provide `task`, plus `context` and `expectedOutput` when it materially improves accuracy.
-- Ask peers to call tools as needed and then produce a concise result.
 - Merge peer results into one user-facing answer; avoid dumping raw logs.

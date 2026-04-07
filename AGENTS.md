@@ -1,6 +1,6 @@
 # Agent Notes (pi-ghosty)
 
-This repo is a lightweight multi-peer orchestrator built on pi-mono packages. Keep changes minimal and pi-style.
+This repo is a lightweight multi-peer orchestrator built on pi-mono packages. Operate as if you were badlogic implementing this as part of pi-mono repo or an extension specifically built for it.
 
 ## Architecture in one breath
 - The user talks to the `coordinator` only.

@@ -25,6 +25,7 @@ import { toolPolicyExtensionFactory } from "../extensions/toolPolicyExtension.js
 import { memoryExtensionFactory } from "../extensions/memoryExtension.js";
 import { systemDebugExtensionFactory } from "../extensions/systemDebugExtension.js";
 import { explicitPeerAddressingExtensionFactory } from "../extensions/explicitPeerAddressingExtension.js";
+import { roleSystemPromptExtensionFactory } from "../extensions/roleSystemPromptExtension.js";
 import { systemPromptTraceExtensionFactory } from "../extensions/systemPromptTraceExtension.js";
 import { JsonlTrace } from "../logging/jsonlTrace.js";
 import type { GhostyConfig } from "../config/schema.js";
@@ -50,51 +51,9 @@ function buildVllmModel(env: Env, config: GhostyConfig): Model<"openai-completio
   };
 }
 
-function roleFirstSentence(agentName: string): string | undefined {
-  if (agentName === "coder") return undefined;
-  if (agentName === "coordinator") {
-    return (
-      "You are the coordinator agent for pi-ghosty and the only user-facing agent. " +
-      "Your job is to chat with the user, decide what work to do yourself vs delegate, and delegate focused tasks to specialist peers. " +
-      "Integrate peer results into a final answer for the user."
-    );
-  }
-  if (agentName === "researcher") {
-    return (
-      "You are the researcher peer for pi-ghosty (internal; not user-facing). " +
-      "Do local repository/system investigation only and report concise, reproducible findings back to the coordinator."
-    );
-  }
-  if (agentName === "reviewer") {
-    return (
-      "You are the reviewer peer for pi-ghosty (internal; not user-facing). " +
-      "Review proposed changes for correctness, safety, and scope drift, and report concrete issues and a short checklist back to the coordinator."
-    );
-  }
-  if (agentName === "memory") {
-    return (
-      "You are the memory peer for pi-ghosty (internal; not user-facing). " +
-      "Focus on long-term memory behavior (recall/retain, tags, scopes, observations) and report recommendations back to the coordinator."
-    );
-  }
-  return undefined;
-}
-
-function overridePiFirstSentence(base: string | undefined, agentName: string): string | undefined {
-  if (!base) return base;
-  const replacement = roleFirstSentence(agentName);
-  if (!replacement) return base;
-
-  const piSentence =
-    "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.";
-
-  if (base.startsWith(piSentence)) {
-    return `${replacement}\n\n${base.slice(piSentence.length).trimStart()}`;
-  }
-
-  // Fallback if upstream wording changes: keep pi prompt, but lead with our role sentence.
-  return `${replacement}\n\n${base}`;
-}
+// NOTE: role shaping is now done via `roleSystemPromptExtensionFactory()` at `before_agent_start`.
+// ResourceLoader.systemPromptOverride only applies to file-backed system prompts, but pi's default
+// system prompt is not necessarily loaded from SYSTEM.md.
 
 function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
@@ -154,9 +113,8 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
   const traceToolGating = traceToolBlocks || env.GHOSTY_DEBUG_TOOL_GATING;
 
   const extensionFactories: ExtensionFactory[] = [
-    ...(traceSystemPrompt
-      ? [systemPromptTraceExtensionFactory({ runDir, agentName, sessionId })]
-      : []),
+    roleSystemPromptExtensionFactory(agentName),
+    ...(traceSystemPrompt ? [systemPromptTraceExtensionFactory({ runDir, agentName, sessionId })] : []),
     toolPolicyExtensionFactory(
       config,
       agentName,
@@ -191,7 +149,6 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
       // Disable automatic AGENTS.md/CLAUDE.md context-file injection.
       // Rationale: our workflow keeps machine/repo contracts out of the LLM system prompt by default.
       agentsFilesOverride: (_current) => ({ agentsFiles: [] }),
-      systemPromptOverride: (base) => overridePiFirstSentence(base, agentName),
       appendSystemPromptOverride: (base) => {
         const out = [...base];
         if (peerParts.joined.trim()) out.push(peerParts.joined);

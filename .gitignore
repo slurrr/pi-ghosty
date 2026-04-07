@@ -5,3 +5,8 @@ dist/
 !.env.example
 data/
 *.log
+
+peers/*/IDENTITY.md
+peers/*/PERSONA.md
+peers/*/USER.md
+peers/*/memory.md
