@@ -4,7 +4,7 @@ rg -n "agents\\[|tools\\b|projectTag|hindsight|vllm" pi-agent.json src/config sr
 
 
 tmux and shit
-~
+
  1. Start tmux session:                                                                                                         
  ```bash                                                                                                                        
    tmux new -s ghosty                                                                                                           
