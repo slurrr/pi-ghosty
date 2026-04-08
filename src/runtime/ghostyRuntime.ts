@@ -35,7 +35,8 @@ function lastAssistantText(session: AgentSession): string {
 }
 
 export interface GhostyRuntimeOptions {
-  rootDir: string;
+  projectDir: string;
+  workDir: string;
   runDir: string;
   env: Env;
   config: GhostyConfig;
@@ -58,7 +59,8 @@ export class GhostyRuntime {
   private readonly peers = new Map<(typeof ghostyPeerNames)[number], SessionHandle>();
 
   private constructor(
-    private readonly rootDir: string,
+    private readonly projectDir: string,
+    private readonly workDir: string,
     private readonly runDir: string,
     private readonly env: Env,
     private readonly config: GhostyConfig,
@@ -68,7 +70,7 @@ export class GhostyRuntime {
   ) {}
 
   static async create(options: GhostyRuntimeOptions): Promise<GhostyRuntime> {
-    const { rootDir, runDir, env, config, coordinatorSessionManager, coordinatorSessionStartEvent } = options;
+    const { projectDir, workDir, runDir, env, config, coordinatorSessionManager, coordinatorSessionStartEvent } = options;
     let delegateHandler = async (_request: DelegateRequest): Promise<PeerResult> => {
       throw new Error("Delegate handler is not ready");
     };
@@ -81,7 +83,8 @@ export class GhostyRuntime {
       extensionsResult,
       modelFallbackMessage,
     } = await createGhostySession({
-      rootDir,
+      projectDir,
+      workDir,
       runDir,
       env,
       config,
@@ -103,7 +106,7 @@ export class GhostyRuntime {
     const trace = JsonlTrace.forRuntime(runDir, coordinator.sessionId);
     const artifacts = ArtifactStore.forProject(runDir, config.defaults.projectTag);
 
-    const runtime = new GhostyRuntime(rootDir, runDir, env, config, coordinator, trace, artifacts);
+    const runtime = new GhostyRuntime(projectDir, workDir, runDir, env, config, coordinator, trace, artifacts);
 
     delegateHandler = runtime.delegateToPeer.bind(runtime);
     return runtime;
@@ -162,7 +165,8 @@ export class GhostyRuntime {
     if (existing) return existing;
 
     const { session, sessionManager } = await createGhostySession({
-      rootDir: this.rootDir,
+      projectDir: this.projectDir,
+      workDir: this.workDir,
       runDir: this.runDir,
       env: this.env,
       config: this.config,

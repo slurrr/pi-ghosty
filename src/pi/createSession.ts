@@ -27,6 +27,7 @@ import { systemDebugExtensionFactory } from "../extensions/systemDebugExtension.
 import { explicitPeerAddressingExtensionFactory } from "../extensions/explicitPeerAddressingExtension.js";
 import { roleSystemPromptExtensionFactory } from "../extensions/roleSystemPromptExtension.js";
 import { systemPromptTraceExtensionFactory } from "../extensions/systemPromptTraceExtension.js";
+import { samplingExtensionFactory } from "../extensions/samplingExtension.js";
 import { JsonlTrace } from "../logging/jsonlTrace.js";
 import type { GhostyConfig } from "../config/schema.js";
 import type { Env } from "../env.js";
@@ -60,7 +61,8 @@ function sha256(text: string): string {
 }
 
 export interface CreateGhostySessionArgs {
-  rootDir: string;
+  projectDir: string;
+  workDir: string;
   runDir: string;
   env: Env;
   config: GhostyConfig;
@@ -73,12 +75,12 @@ export interface CreateGhostySessionArgs {
 }
 
 export async function createGhostySession(args: CreateGhostySessionArgs) {
-  const { rootDir, runDir, env, config, agentName, customTools, sessionManager: sessionManagerOverride, sessionStartEvent } = args;
+  const { projectDir, workDir, runDir, env, config, agentName, customTools, sessionManager: sessionManagerOverride, sessionStartEvent } = args;
 
   const sessionDir = resolve(runDir, "data", "sessions", agentName);
   mkdirSync(sessionDir, { recursive: true });
 
-  const sessionManager = sessionManagerOverride ?? SessionManager.continueRecent(rootDir, sessionDir);
+  const sessionManager = sessionManagerOverride ?? SessionManager.continueRecent(workDir, sessionDir);
   const settingsManager = SettingsManager.create(runDir);
 
   const authStorage = AuthStorage.inMemory();
@@ -103,7 +105,7 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
     ],
   } as any);
 
-  const peerParts = loadPeerPromptParts(rootDir, agentName);
+  const peerParts = loadPeerPromptParts(projectDir, agentName);
 
   const sessionId = sessionManager.getSessionId();
   const internalAllowedTools = agentName === "coordinator" ? [] : ["peer_report"];
@@ -119,7 +121,7 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
       config,
       agentName,
       sessionId,
-      { projectRoot: rootDir, runDir },
+      { projectRoot: workDir, runDir },
       {
         traceCalls: traceToolBlocks,
         traceResults: traceToolBlocks,
@@ -132,6 +134,12 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
       projectTag: config.defaults.projectTag,
       traceBlocks: traceToolGating,
     }),
+    samplingExtensionFactory(config, agentName, {
+      runDir,
+      sessionId,
+      projectTag: config.defaults.projectTag,
+      traceSampling: debugAll,
+    }),
     ...(env.GHOSTY_DISABLE_MEMORY ? [] : [memoryExtensionFactory(env, config, agentName, sessionId, { runDir })]),
     systemDebugExtensionFactory(),
     explicitPeerAddressingExtensionFactory(agentName),
@@ -140,12 +148,14 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
   const model = buildVllmModel(env, config);
 
   const services = await createAgentSessionServices({
-    cwd: rootDir,
+    cwd: workDir,
     settingsManager,
     authStorage,
     modelRegistry,
     resourceLoaderOptions: {
       extensionFactories,
+      // We want prompts/config from the projectDir even when running from a sandbox workDir.
+      appendSystemPrompt: resolve(projectDir, ".pi", "APPEND_SYSTEM.md"),
       // Disable automatic AGENTS.md/CLAUDE.md context-file injection.
       // Rationale: our workflow keeps machine/repo contracts out of the LLM system prompt by default.
       agentsFilesOverride: (_current) => ({ agentsFiles: [] }),
