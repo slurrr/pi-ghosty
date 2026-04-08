@@ -28,6 +28,8 @@ import { explicitPeerAddressingExtensionFactory } from "../extensions/explicitPe
 import { roleSystemPromptExtensionFactory } from "../extensions/roleSystemPromptExtension.js";
 import { systemPromptTraceExtensionFactory } from "../extensions/systemPromptTraceExtension.js";
 import { samplingExtensionFactory } from "../extensions/samplingExtension.js";
+import { peerToolsExtensionFactory } from "../extensions/peerToolsExtension.js";
+import { loopBreakerExtensionFactory } from "../extensions/loopBreakerExtension.js";
 import { JsonlTrace } from "../logging/jsonlTrace.js";
 import type { GhostyConfig } from "../config/schema.js";
 import type { Env } from "../env.js";
@@ -108,7 +110,7 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
   const peerParts = loadPeerPromptParts(projectDir, agentName);
 
   const sessionId = sessionManager.getSessionId();
-  const internalAllowedTools = agentName === "coordinator" ? [] : ["peer_report"];
+  const internalAllowedTools = agentName === "coordinator" ? ["peer_tools"] : ["peer_report"];
   const debugAll = env.GHOSTY_DEBUG_ALL;
   const traceSystemPrompt = debugAll || env.GHOSTY_TRACE_SYSTEM_PROMPT;
   const traceToolBlocks = debugAll || env.GHOSTY_DEBUG_TOOL_BLOCKS;
@@ -140,6 +142,8 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
       projectTag: config.defaults.projectTag,
       traceSampling: debugAll,
     }),
+    peerToolsExtensionFactory(config, agentName),
+    loopBreakerExtensionFactory({ agentName, n: 3 }),
     ...(env.GHOSTY_DISABLE_MEMORY ? [] : [memoryExtensionFactory(env, config, agentName, sessionId, { runDir })]),
     systemDebugExtensionFactory(),
     explicitPeerAddressingExtensionFactory(agentName),
@@ -154,13 +158,28 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
     modelRegistry,
     resourceLoaderOptions: {
       extensionFactories,
-      // We want prompts/config from the projectDir even when running from a sandbox workDir.
+      // We want prompts/skills/config from the projectDir even when running from a sandbox workDir.
       appendSystemPrompt: resolve(projectDir, ".pi", "APPEND_SYSTEM.md"),
+      additionalSkillPaths: [resolve(projectDir, ".pi", "skills")],
       // Disable automatic AGENTS.md/CLAUDE.md context-file injection.
       // Rationale: our workflow keeps machine/repo contracts out of the LLM system prompt by default.
       agentsFilesOverride: (_current) => ({ agentsFiles: [] }),
       appendSystemPromptOverride: (base) => {
         const out = [...base];
+
+        // Coordinator: expand peer tool surfaces placeholder from config.
+        if (agentName === "coordinator") {
+          const peers = ["coder", "researcher", "reviewer", "memory"] as const;
+          const lines: string[] = [];
+          for (const p of peers) {
+            const tools = config.agents[p]?.tools ?? [];
+            const full = [...tools, "peer_report"];
+            lines.push(`- @${p}: ${full.join(", ") || "(no tools)"}`);
+          }
+          const rendered = ["## Peer tool surfaces (auto; from pi-agent.json)", "", ...lines, ""].join("\n");
+          peerParts.joined = peerParts.joined.replace("{{PEER_TOOL_SURFACES}}", rendered.trimEnd());
+        }
+
         if (peerParts.joined.trim()) out.push(peerParts.joined);
         return out;
       },

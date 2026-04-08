@@ -253,8 +253,28 @@ export class GhostyRuntime {
         output = reportOutput;
         reportSource = "tool";
       } else {
+        // If the peer got stuck in a tool-failure loop, capture recent tool errors to surface to the coordinator.
+        const toolErrors: string[] = [];
+        for (let i = retryNewMessages.length - 1; i >= 0 && toolErrors.length < 8; i--) {
+          const m: any = retryNewMessages[i];
+          if (m?.role !== "toolResult") continue;
+          if (!m?.isError) continue;
+          const blocks = Array.isArray(m.content) ? m.content : [];
+          const text = blocks
+            .filter((b: any) => b?.type === "text" && typeof b.text === "string")
+            .map((b: any) => b.text)
+            .join("")
+            .trim();
+          toolErrors.push(`- ${m.toolName}: ${text || "(error)"}`);
+        }
+
         rawText = lastAssistantText(peer.session);
-        output = peerOutputSchema.parse({ summary: rawText?.trim() ? rawText.trim() : "(no peer report)" });
+        const summaryBase = rawText?.trim() ? rawText.trim() : "(no peer report)";
+        const summary = toolErrors.length > 0
+          ? `Peer did not produce peer_report (likely tool failure loop). Last errors:\n${toolErrors.reverse().join("\n")}\n\nLast assistant text: ${summaryBase}`
+          : summaryBase;
+
+        output = peerOutputSchema.parse({ summary });
         reportSource = "text";
       }
     }

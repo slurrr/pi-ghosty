@@ -1,34 +1,32 @@
 # Current Goal
-Stabilize pi-ghosty for prompt/role iteration with strong observability:
-- tool visibility in traces (tool_call/tool_result)
-- Hindsight recall/retain timing/size traces
-- make session commands like `/new` behave like upstream pi
+Get prompt/tool-availability ergonomics under control for multi-peer delegation:
+- Coordinator must not delegate impossible tasks (must know peer tool surfaces)
+- Move “how to use delegate/peer_report” instructions out of always-on system prompt parts and into skills
+- Avoid loops where a peer repeatedly calls an unavailable tool (e.g. bash) and wedges the coordinator
 
 # Current State
-- Multi-peer runtime works: coordinator delegates; peers return structured results via `peer_report` (captured inside `delegate` tool result `details`).
-- Run state lives under `~/runs/pi-ghosty` (sessions, traces, system prompt snapshots).
-- System prompt snapshots are traced under `~/runs/pi-ghosty/data/system-prompts/<agent>/<sessionId>.jsonl`.
-- Hindsight is now reachable at `http://127.0.0.1:8888/health` and recall injection is active (adds `# Recalled Memory (...)` blocks).
-- `/new` now works (runtime factory no longer throws; coordinator session can be replaced in the TUI).
+- Branch: `fuck-around-find-out`.
+- Delegate wedge observed: researcher peer repeatedly attempted `bash` and received toolResult `Tool bash not found`, causing coordinator to hang waiting for peer completion.
+- A process kill switch exists via pidfile: pi-ghosty writes `~/runs/pi-ghosty/ghosty.pid`; `npm run kill` sends SIGINT.
+- Work in progress: skill docs added under `.pi/skills/`:
+  - `.pi/skills/delegate/SKILL.md`
+  - `.pi/skills/peer-report/SKILL.md`
+- Work in progress (controversial): placeholder-based expansion of peer tool surfaces from `pi-agent.json` was started, but placement/approach is disputed.
 
 # Decisions
-- Context window and max tokens are now config-driven in `pi-agent.json` under `defaults.model`.
-- Tool tracing was re-enabled via `toolPolicyExtensionFactory` using `GHOSTY_DEBUG_TOOL_BLOCKS` (logs tool_call/tool_result/tool_policy_block).
-- Memory can be disabled without touching code via `GHOSTY_DISABLE_MEMORY=1` (default enabled).
+- Keep `delegate` and `peer_report` as tools.
+- Put tool usage instructions in skills (discoverable, invoked on demand), not as always-on coordinator prompt parts.
 
 # Open Problems
-- `/reload` still does not hot-reload the inline extension factories because they are not file-discovered `.pi/extensions/*` modules. Long-term direction: move ghosty behavior into project-local extensions to get true `/reload`.
-- Memory recall is noisy and can contain stale facts (e.g., recalling old contextWindow values). Needs a memory policy pass (retain/recall filtering).
-- Need to validate new memory timing traces show up in `~/runs/pi-ghosty/data/traces/<agent>/<sessionId>.jsonl` as `memory_recall`/`memory_retain`.
+- How to expose peer tool surfaces to the coordinator *early enough* to prevent impossible delegations.
+  - Skills are static markdown; they cannot auto-expand placeholders from config without custom runtime logic.
+- Need a guardrail against “tool not found” loops (fail fast with an instructive error and force `peer_report`).
 
 # Resume Instructions
-1. Run with high visibility:
-   - `GHOSTY_DEBUG_ALL=1 GHOSTY_DEBUG_TOOL_BLOCKS=1 npm run dev`
-2. In TUI, do a simple delegation and verify traces include tool calls/results:
-   - `~/runs/pi-ghosty/data/traces/coordinator/<sessionId>.jsonl` now should contain `tool_call` / `tool_result` events.
-3. Verify memory timing events:
-   - look for `memory_recall` / `memory_retain` in `~/runs/pi-ghosty/data/traces/<agent>/<sessionId>.jsonl`.
-4. If you want to work on prompts without memory noise:
-   - run with `GHOSTY_DISABLE_MEMORY=1`.
-5. Longer-term refactor (pi-style hot reload):
-   - move inline extension factories into `.pi/extensions/` and remove `resourceLoaderOptions.extensionFactories` so `/reload` actually reloads ghosty behavior.
+1. Inspect current diffs: `git status` and decide whether to keep or revert the peer-tool-surface placeholder changes.
+2. Decide canonical place for tool-surface truth:
+   - either expand into a kept coordinator prompt part (e.g. coordinator role md) via placeholder replacement, or
+   - inject via an extension at session start.
+3. Add a loop breaker for peers:
+   - if toolResult contains `Tool <name> not found`, inject a message: "tool unavailable; do not retry; call peer_report with limitation" and/or abort after N repeats.
+4. Test: delegate a task that would normally tempt `bash` for a peer, confirm the peer reports limitation instead of looping.
