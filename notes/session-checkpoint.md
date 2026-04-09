@@ -1,25 +1,32 @@
 # Current Goal
-Add lightweight debug visibility that transcripts don’t capture (system prompt snapshots, tool gating blocks, tool surface, prompt-part provenance), all behind env flags with a single “enable all” flag.
+Get prompt/tool-availability ergonomics under control for multi-peer delegation:
+- Coordinator must not delegate impossible tasks (must know peer tool surfaces)
+- Move “how to use delegate/peer_report” instructions out of always-on system prompt parts and into skills
+- Avoid loops where a peer repeatedly calls an unavailable tool (e.g. bash) and wedges the coordinator
 
 # Current State
-- Multi-peer runtime works (coordinator delegates to peers; peers report via `peer_report`).
-- Run state lives under `~/runs/pi-ghosty` (sessions/traces/artifacts).
-- Telegram bridge is connected via upstream `pi-telegram` extension (messages prefixed `[telegram]`).
-- TUI supports `/system` and `/system guidelines` (live effective system prompt view).
-- Repo has local changes in progress (debug flags + logging).
+- Branch: `fuck-around-find-out`.
+- Delegate wedge observed: researcher peer repeatedly attempted `bash` and received toolResult `Tool bash not found`, causing coordinator to hang waiting for peer completion.
+- A process kill switch exists via pidfile: pi-ghosty writes `~/runs/pi-ghosty/ghosty.pid`; `npm run kill` sends SIGINT.
+- Work in progress: skill docs added under `.pi/skills/`:
+  - `.pi/skills/delegate/SKILL.md`
+  - `.pi/skills/peer-report/SKILL.md`
+- Work in progress (controversial): placeholder-based expansion of peer tool surfaces from `pi-agent.json` was started, but placement/approach is disputed.
 
 # Decisions
-- Don’t persist system prompt by default; only capture it for debugging via explicit flags.
-- Keep debug signals in JSONL traces under runDir (cheap to inspect; not in “session transcript”).
+- Keep `delegate` and `peer_report` as tools.
+- Put tool usage instructions in skills (discoverable, invoked on demand), not as always-on coordinator prompt parts.
 
 # Open Problems
-- Confirm the new debug flags produce the expected files/events during real runs.
-- Decide whether to keep `toolPolicyExtension`/`toolGatingExtension` as extensions long-term or shift responsibility elsewhere (don’t duplicate pi unless it’s buying us something).
+- How to expose peer tool surfaces to the coordinator *early enough* to prevent impossible delegations.
+  - Skills are static markdown; they cannot auto-expand placeholders from config without custom runtime logic.
+- Need a guardrail against “tool not found” loops (fail fast with an instructive error and force `peer_report`).
 
 # Resume Instructions
-1. `npm run dev:debug` to run with all debug flags enabled.
-2. In TUI, exercise a delegation turn and confirm:
-   - system prompt trace appears under `~/runs/pi-ghosty/data/system-prompts/<agent>/<sessionId>.jsonl`
-   - tool surface + prompt-part provenance events land in `~/runs/pi-ghosty/data/traces/<agent>/<sessionId>.jsonl`
-   - tool gating blocks emit `tool_gating_block` events in the agent trace.
-3. If noise is too high, switch to per-flag enabling (env vars in `src/env.ts`).
+1. Inspect current diffs: `git status` and decide whether to keep or revert the peer-tool-surface placeholder changes.
+2. Decide canonical place for tool-surface truth:
+   - either expand into a kept coordinator prompt part (e.g. coordinator role md) via placeholder replacement, or
+   - inject via an extension at session start.
+3. Add a loop breaker for peers:
+   - if toolResult contains `Tool <name> not found`, inject a message: "tool unavailable; do not retry; call peer_report with limitation" and/or abort after N repeats.
+4. Test: delegate a task that would normally tempt `bash` for a peer, confirm the peer reports limitation instead of looping.

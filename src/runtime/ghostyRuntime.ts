@@ -35,10 +35,15 @@ function lastAssistantText(session: AgentSession): string {
 }
 
 export interface GhostyRuntimeOptions {
-  rootDir: string;
+  projectDir: string;
+  workDir: string;
   runDir: string;
   env: Env;
   config: GhostyConfig;
+
+  // Optional override to support interactive runtime operations like /new and /resume.
+  coordinatorSessionManager?: import("@mariozechner/pi-coding-agent").SessionManager;
+  coordinatorSessionStartEvent?: import("@mariozechner/pi-coding-agent").SessionStartEvent;
 }
 
 interface SessionHandle {
@@ -46,6 +51,7 @@ interface SessionHandle {
   sessionId: string;
   sessionState: "new" | "resumed";
   services?: AgentSessionServices;
+  extensionsResult?: any;
   modelFallbackMessage?: string;
 }
 
@@ -53,7 +59,8 @@ export class GhostyRuntime {
   private readonly peers = new Map<(typeof ghostyPeerNames)[number], SessionHandle>();
 
   private constructor(
-    private readonly rootDir: string,
+    private readonly projectDir: string,
+    private readonly workDir: string,
     private readonly runDir: string,
     private readonly env: Env,
     private readonly config: GhostyConfig,
@@ -63,19 +70,28 @@ export class GhostyRuntime {
   ) {}
 
   static async create(options: GhostyRuntimeOptions): Promise<GhostyRuntime> {
-    const { rootDir, runDir, env, config } = options;
+    const { projectDir, workDir, runDir, env, config, coordinatorSessionManager, coordinatorSessionStartEvent } = options;
     let delegateHandler = async (_request: DelegateRequest): Promise<PeerResult> => {
       throw new Error("Delegate handler is not ready");
     };
     const delegateTool = createDelegateTool((request) => delegateHandler(request));
 
-    const { session: coordinatorSession, sessionManager, services, modelFallbackMessage } = await createGhostySession({
-      rootDir,
+    const {
+      session: coordinatorSession,
+      sessionManager,
+      services,
+      extensionsResult,
+      modelFallbackMessage,
+    } = await createGhostySession({
+      projectDir,
+      workDir,
       runDir,
       env,
       config,
       agentName: "coordinator",
       customTools: [delegateTool],
+      sessionManager: coordinatorSessionManager,
+      sessionStartEvent: coordinatorSessionStartEvent,
     });
 
     const coordinator = {
@@ -83,13 +99,14 @@ export class GhostyRuntime {
       sessionId: sessionManager.getSessionId(),
       sessionState: sessionManager.getEntries().length > 0 ? "resumed" : "new",
       services,
+      extensionsResult,
       modelFallbackMessage,
     } as SessionHandle;
 
     const trace = JsonlTrace.forRuntime(runDir, coordinator.sessionId);
     const artifacts = ArtifactStore.forProject(runDir, config.defaults.projectTag);
 
-    const runtime = new GhostyRuntime(rootDir, runDir, env, config, coordinator, trace, artifacts);
+    const runtime = new GhostyRuntime(projectDir, workDir, runDir, env, config, coordinator, trace, artifacts);
 
     delegateHandler = runtime.delegateToPeer.bind(runtime);
     return runtime;
@@ -118,6 +135,13 @@ export class GhostyRuntime {
     return this.coordinator.modelFallbackMessage;
   }
 
+  getCoordinatorExtensionsResult(): any {
+    if (!this.coordinator.extensionsResult) {
+      throw new Error("Coordinator extensionsResult not available");
+    }
+    return this.coordinator.extensionsResult;
+  }
+
   async handleCoordinatorMessage(
     text: string,
     options?: { streamingBehavior?: "steer" | "followUp" },
@@ -141,7 +165,8 @@ export class GhostyRuntime {
     if (existing) return existing;
 
     const { session, sessionManager } = await createGhostySession({
-      rootDir: this.rootDir,
+      projectDir: this.projectDir,
+      workDir: this.workDir,
       runDir: this.runDir,
       env: this.env,
       config: this.config,
@@ -228,8 +253,28 @@ export class GhostyRuntime {
         output = reportOutput;
         reportSource = "tool";
       } else {
+        // If the peer got stuck in a tool-failure loop, capture recent tool errors to surface to the coordinator.
+        const toolErrors: string[] = [];
+        for (let i = retryNewMessages.length - 1; i >= 0 && toolErrors.length < 8; i--) {
+          const m: any = retryNewMessages[i];
+          if (m?.role !== "toolResult") continue;
+          if (!m?.isError) continue;
+          const blocks = Array.isArray(m.content) ? m.content : [];
+          const text = blocks
+            .filter((b: any) => b?.type === "text" && typeof b.text === "string")
+            .map((b: any) => b.text)
+            .join("")
+            .trim();
+          toolErrors.push(`- ${m.toolName}: ${text || "(error)"}`);
+        }
+
         rawText = lastAssistantText(peer.session);
-        output = peerOutputSchema.parse({ summary: rawText?.trim() ? rawText.trim() : "(no peer report)" });
+        const summaryBase = rawText?.trim() ? rawText.trim() : "(no peer report)";
+        const summary = toolErrors.length > 0
+          ? `Peer did not produce peer_report (likely tool failure loop). Last errors:\n${toolErrors.reverse().join("\n")}\n\nLast assistant text: ${summaryBase}`
+          : summaryBase;
+
+        output = peerOutputSchema.parse({ summary });
         reportSource = "text";
       }
     }

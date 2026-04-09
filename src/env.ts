@@ -23,6 +23,10 @@ const envSchema = z.object({
   HINDSIGHT_BANK_ID: z.string().default("pi-ghosty"),
 
   GHOSTY_RUN_DIR: z.string().optional(),
+
+  // Feature toggles
+  GHOSTY_DISABLE_MEMORY: envBool(false),
+
   // Debug flags (all default off / 0)
   GHOSTY_DEBUG_ALL: envBool(false),
   GHOSTY_TRACE_SYSTEM_PROMPT: envBool(false),

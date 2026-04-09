@@ -11,6 +11,7 @@ import {
   createAgentSessionServices,
   editTool,
   type ExtensionFactory,
+  type SessionStartEvent,
   type ToolDefinition,
   findTool,
   grepTool,
@@ -24,7 +25,11 @@ import { toolPolicyExtensionFactory } from "../extensions/toolPolicyExtension.js
 import { memoryExtensionFactory } from "../extensions/memoryExtension.js";
 import { systemDebugExtensionFactory } from "../extensions/systemDebugExtension.js";
 import { explicitPeerAddressingExtensionFactory } from "../extensions/explicitPeerAddressingExtension.js";
+import { roleSystemPromptExtensionFactory } from "../extensions/roleSystemPromptExtension.js";
 import { systemPromptTraceExtensionFactory } from "../extensions/systemPromptTraceExtension.js";
+import { samplingExtensionFactory } from "../extensions/samplingExtension.js";
+import { peerToolsExtensionFactory } from "../extensions/peerToolsExtension.js";
+import { loopBreakerExtensionFactory } from "../extensions/loopBreakerExtension.js";
 import { JsonlTrace } from "../logging/jsonlTrace.js";
 import type { GhostyConfig } from "../config/schema.js";
 import type { Env } from "../env.js";
@@ -40,8 +45,8 @@ function buildVllmModel(env: Env, config: GhostyConfig): Model<"openai-completio
     reasoning: false,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 32768,
-    maxTokens: 8192,
+    contextWindow: config.defaults.model.contextWindow,
+    maxTokens: config.defaults.model.maxTokens,
     compat: {
       supportsDeveloperRole: false,
       supportsReasoningEffort: false,
@@ -49,59 +54,35 @@ function buildVllmModel(env: Env, config: GhostyConfig): Model<"openai-completio
   };
 }
 
-function roleFirstSentence(agentName: string): string | undefined {
-  if (agentName === "coder") return undefined;
-  if (agentName === "coordinator") {
-    return "You are the coordinator agent for pi-ghosty. You talk to the user and delegate focused work to specialist peers.";
-  }
-  if (agentName === "researcher") {
-    return "You are the researcher peer for pi-ghosty. You do local repository/system research and report concise findings.";
-  }
-  if (agentName === "reviewer") {
-    return "You are the reviewer peer for pi-ghosty. You review changes for correctness, safety, and scope.";
-  }
-  if (agentName === "memory") {
-    return "You are the memory peer for pi-ghosty. You help tune and debug long-term memory behavior and retention.";
-  }
-  return undefined;
-}
-
-function overridePiFirstSentence(base: string | undefined, agentName: string): string | undefined {
-  if (!base) return base;
-  const replacement = roleFirstSentence(agentName);
-  if (!replacement) return base;
-
-  const piSentence =
-    "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.";
-
-  if (base.startsWith(piSentence)) {
-    return `${replacement}\n\n${base.slice(piSentence.length).trimStart()}`;
-  }
-
-  // Fallback if upstream wording changes: keep pi prompt, but lead with our role sentence.
-  return `${replacement}\n\n${base}`;
-}
+// NOTE: role shaping is now done via `roleSystemPromptExtensionFactory()` at `before_agent_start`.
+// ResourceLoader.systemPromptOverride only applies to file-backed system prompts, but pi's default
+// system prompt is not necessarily loaded from SYSTEM.md.
 
 function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
 
 export interface CreateGhostySessionArgs {
-  rootDir: string;
+  projectDir: string;
+  workDir: string;
   runDir: string;
   env: Env;
   config: GhostyConfig;
   agentName: string;
   customTools?: ToolDefinition[];
+
+  // Optional override to support interactive runtime operations like /new and /resume.
+  sessionManager?: SessionManager;
+  sessionStartEvent?: SessionStartEvent;
 }
 
 export async function createGhostySession(args: CreateGhostySessionArgs) {
-  const { rootDir, runDir, env, config, agentName, customTools } = args;
+  const { projectDir, workDir, runDir, env, config, agentName, customTools, sessionManager: sessionManagerOverride, sessionStartEvent } = args;
 
   const sessionDir = resolve(runDir, "data", "sessions", agentName);
   mkdirSync(sessionDir, { recursive: true });
 
-  const sessionManager = SessionManager.continueRecent(rootDir, sessionDir);
+  const sessionManager = sessionManagerOverride ?? SessionManager.continueRecent(workDir, sessionDir);
   const settingsManager = SettingsManager.create(runDir);
 
   const authStorage = AuthStorage.inMemory();
@@ -120,33 +101,31 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
         reasoning: false,
         input: ["text"],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: 32768,
-        maxTokens: 8192,
+        contextWindow: config.defaults.model.contextWindow,
+        maxTokens: config.defaults.model.maxTokens,
       },
     ],
   } as any);
 
-  const peerParts = loadPeerPromptParts(rootDir, agentName);
+  const peerParts = loadPeerPromptParts(projectDir, agentName);
 
   const sessionId = sessionManager.getSessionId();
-  const internalAllowedTools = agentName === "coordinator" ? [] : ["peer_report"];
+  const internalAllowedTools = agentName === "coordinator" ? ["peer_tools"] : ["peer_report"];
   const debugAll = env.GHOSTY_DEBUG_ALL;
   const traceSystemPrompt = debugAll || env.GHOSTY_TRACE_SYSTEM_PROMPT;
   const traceToolBlocks = debugAll || env.GHOSTY_DEBUG_TOOL_BLOCKS;
   const traceToolGating = traceToolBlocks || env.GHOSTY_DEBUG_TOOL_GATING;
 
   const extensionFactories: ExtensionFactory[] = [
-    ...(traceSystemPrompt
-      ? [systemPromptTraceExtensionFactory({ runDir, agentName, sessionId })]
-      : []),
+    ...(traceSystemPrompt ? [systemPromptTraceExtensionFactory({ runDir, agentName, sessionId })] : []),
     toolPolicyExtensionFactory(
       config,
       agentName,
       sessionId,
-      { projectRoot: rootDir, runDir },
+      { projectRoot: workDir, runDir },
       {
-        traceCalls: false,
-        traceResults: false,
+        traceCalls: traceToolBlocks,
+        traceResults: traceToolBlocks,
         traceBlocks: traceToolBlocks,
       },
     ),
@@ -156,7 +135,19 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
       projectTag: config.defaults.projectTag,
       traceBlocks: traceToolGating,
     }),
-    memoryExtensionFactory(env, config, agentName, sessionId),
+    samplingExtensionFactory(config, agentName, {
+      runDir,
+      sessionId,
+      projectTag: config.defaults.projectTag,
+      traceSampling: debugAll,
+    }),
+    peerToolsExtensionFactory(config, agentName),
+    loopBreakerExtensionFactory({ agentName, n: 3 }),
+    ...(env.GHOSTY_DISABLE_MEMORY ? [] : [memoryExtensionFactory(env, config, agentName, sessionId, { runDir })]),
+    // Role shaping should run *after* any other systemPrompt mutations (e.g. memory injection)
+    // so the final system prompt never starts with pi's default "expert coding assistant" paragraph
+    // for non-coder agents.
+    roleSystemPromptExtensionFactory(agentName),
     systemDebugExtensionFactory(),
     explicitPeerAddressingExtensionFactory(agentName),
   ];
@@ -164,15 +155,21 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
   const model = buildVllmModel(env, config);
 
   const services = await createAgentSessionServices({
-    cwd: rootDir,
+    cwd: workDir,
     settingsManager,
     authStorage,
     modelRegistry,
     resourceLoaderOptions: {
       extensionFactories,
-      systemPromptOverride: (base) => overridePiFirstSentence(base, agentName),
+      // We want prompts/skills/config from the projectDir even when running from a sandbox workDir.
+      appendSystemPrompt: resolve(projectDir, ".pi", "APPEND_SYSTEM.md"),
+      additionalSkillPaths: [resolve(projectDir, ".pi", "skills")],
+      // Disable automatic AGENTS.md/CLAUDE.md context-file injection.
+      // Rationale: our workflow keeps machine/repo contracts out of the LLM system prompt by default.
+      agentsFilesOverride: (_current) => ({ agentsFiles: [] }),
       appendSystemPromptOverride: (base) => {
         const out = [...base];
+
         if (peerParts.joined.trim()) out.push(peerParts.joined);
         return out;
       },
@@ -182,6 +179,7 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
   const { session, extensionsResult, modelFallbackMessage } = await createAgentSessionFromServices({
     services,
     sessionManager,
+    sessionStartEvent,
     model,
     tools: [readTool, bashTool, editTool, writeTool, grepTool, findTool, lsTool],
     customTools,
