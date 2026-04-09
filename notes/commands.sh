@@ -2,6 +2,11 @@ map config
 
 rg -n "agents\\[|tools\\b|projectTag|hindsight|vllm" pi-agent.json src/config src/pi/createSession.ts 
 
+Confirm each agent’s resolved sampling via:         
+                                                                                                          
+ ```bash                                                                                                  
+   rg -n '"type":"sampling_config"' ~/runs/pi-ghosty/data/traces/*/*.jsonl | tail -n 50                   
+ ```  
 
 tmux and shit
 

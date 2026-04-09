@@ -117,7 +117,6 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
   const traceToolGating = traceToolBlocks || env.GHOSTY_DEBUG_TOOL_GATING;
 
   const extensionFactories: ExtensionFactory[] = [
-    roleSystemPromptExtensionFactory(agentName),
     ...(traceSystemPrompt ? [systemPromptTraceExtensionFactory({ runDir, agentName, sessionId })] : []),
     toolPolicyExtensionFactory(
       config,
@@ -145,6 +144,10 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
     peerToolsExtensionFactory(config, agentName),
     loopBreakerExtensionFactory({ agentName, n: 3 }),
     ...(env.GHOSTY_DISABLE_MEMORY ? [] : [memoryExtensionFactory(env, config, agentName, sessionId, { runDir })]),
+    // Role shaping should run *after* any other systemPrompt mutations (e.g. memory injection)
+    // so the final system prompt never starts with pi's default "expert coding assistant" paragraph
+    // for non-coder agents.
+    roleSystemPromptExtensionFactory(agentName),
     systemDebugExtensionFactory(),
     explicitPeerAddressingExtensionFactory(agentName),
   ];
@@ -166,19 +169,6 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
       agentsFilesOverride: (_current) => ({ agentsFiles: [] }),
       appendSystemPromptOverride: (base) => {
         const out = [...base];
-
-        // Coordinator: expand peer tool surfaces placeholder from config.
-        if (agentName === "coordinator") {
-          const peers = ["coder", "researcher", "reviewer", "memory"] as const;
-          const lines: string[] = [];
-          for (const p of peers) {
-            const tools = config.agents[p]?.tools ?? [];
-            const full = [...tools, "peer_report"];
-            lines.push(`- @${p}: ${full.join(", ") || "(no tools)"}`);
-          }
-          const rendered = ["## Peer tool surfaces (auto; from pi-agent.json)", "", ...lines, ""].join("\n");
-          peerParts.joined = peerParts.joined.replace("{{PEER_TOOL_SURFACES}}", rendered.trimEnd());
-        }
 
         if (peerParts.joined.trim()) out.push(peerParts.joined);
         return out;

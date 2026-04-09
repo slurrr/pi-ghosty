@@ -23,13 +23,29 @@ export function loopBreakerExtensionFactory(options: {
   // toolCallId -> streak when that tool finished.
   const streakByToolCallId = new Map<string, number>();
 
+  // Peer-report loop guard: peer_report should be called once per delegated turn.
+  let peerReportCount = 0;
+  const duplicatePeerReportToolCallIds = new Set<string>();
+
   return (pi) => {
     pi.on("agent_start", () => {
       failStreak = 0;
       streakByToolCallId.clear();
+      peerReportCount = 0;
+      duplicatePeerReportToolCallIds.clear();
     });
 
     pi.on("tool_execution_end", (event, ctx) => {
+      // Peer-report guard: if a peer calls peer_report more than once in a turn,
+      // abort the turn so the coordinator can proceed with the first report.
+      if (isWorkerPeer && event.toolName === "peer_report" && !event.isError) {
+        peerReportCount += 1;
+        if (peerReportCount >= 2) {
+          duplicatePeerReportToolCallIds.add(event.toolCallId);
+          ctx.abort();
+        }
+      }
+
       if (event.isError) {
         failStreak += 1;
       } else {
@@ -44,6 +60,20 @@ export function loopBreakerExtensionFactory(options: {
     });
 
     pi.on("tool_result", (event): { content?: any[] } | void => {
+      // Annotate duplicate peer_report attempts so the coordinator/user can see what happened.
+      if (duplicatePeerReportToolCallIds.has(event.toolCallId)) {
+        const existing = Array.isArray(event.content) ? event.content : [];
+        return {
+          content: [
+            ...existing,
+            {
+              type: "text",
+              text: "\n\n[STOP] peer_report was called more than once in this peer turn; aborting to prevent a loop.",
+            },
+          ],
+        };
+      }
+
       const streak = streakByToolCallId.get(event.toolCallId);
       if (!streak) return;
       if (!event.isError) return;

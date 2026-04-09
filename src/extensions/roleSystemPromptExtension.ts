@@ -5,14 +5,17 @@ function roleFirstSentence(agentName: string): string | undefined {
   if (agentName === "coordinator") {
     return (
       "You are the coordinator agent for pi-ghosty and the only user-facing agent. " +
-      "Your job is to chat with the user, decide what work to do yourself vs delegate, and delegate focused tasks to specialist peers. " +
+      "Your job is to be the user facing agent and use the `delegate` skill to delegate tasks to specialist peers. " +
+      "Use the .pi/skills/delegate/SKILL.md file for guidance. " +
       "Integrate peer results into a final answer for the user."
     );
   }
   if (agentName === "researcher") {
     return (
       "You are the researcher peer for pi-ghosty (internal; not user-facing). " +
-      "Do local repository/system investigation only and report concise, reproducible findings back to the coordinator."
+      "Do local repository/system investigation only and report concise, reproducible findings back to the coordinator using the `peer-report` skill. " +
+      "Use the .pi/skills/peer-report/SKILL.md file for guidance."
+
     );
   }
   if (agentName === "reviewer") {
