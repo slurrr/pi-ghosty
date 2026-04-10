@@ -55,6 +55,9 @@ export function memoryExtensionFactory(
   const trace = JsonlTrace.forAgent(paths.runDir, agentName, sessionId);
 
   return (pi) => {
+    // Async recall timing log (for performance analysis)
+    let lastRecallMs = 0;
+
     pi.on("before_agent_start", async (event) => {
       // Keep recall bounded; we rely on observations + tags + reranking.
       const query = event.prompt;
@@ -66,6 +69,7 @@ export function memoryExtensionFactory(
           tags: [projectTag, `agent:${agentName}`],
           tags_match: "all",
           types: ["observation", "world", "experience"],
+          async: true, // Non-blocking async recall
         } as any);
 
         const facts: any[] = (recalled as any)?.facts ?? (recalled as any)?.results ?? [];
@@ -78,6 +82,7 @@ export function memoryExtensionFactory(
         const memoryBlock = memoryLines.join("\n");
 
         const t1 = performance.now();
+        lastRecallMs = Math.round(t1 - t0);
         await trace.append({
           type: "memory_recall",
           projectTag,
@@ -96,6 +101,7 @@ export function memoryExtensionFactory(
         return { systemPrompt: injected };
       } catch (err: any) {
         const t1 = performance.now();
+        lastRecallMs = Math.round(t1 - t0);
         await trace.append({
           type: "memory_recall_error",
           projectTag,
@@ -125,8 +131,10 @@ export function memoryExtensionFactory(
             mode: "custom",
             scopes: [[projectTag], [`agent:${agentName}`]],
           },
+          async: true, // Non-blocking async retain
         } as any);
         const t1 = performance.now();
+        const recallMs = Math.round(t1 - t0);
         await trace.append({
           type: "memory_retain",
           projectTag,
@@ -137,6 +145,17 @@ export function memoryExtensionFactory(
           documentId,
           transcriptChars: transcript.length,
           tags: baseTags,
+          recallMs, // Include recall latency for comparison
+        });
+        // Update latency log with actual retain time
+        await trace.append({
+          type: "memory_latency",
+          projectTag,
+          bankId,
+          agentName,
+          sessionId,
+          recallMs,
+          retainMs: Math.round(t1 - t0),
         });
       } catch (err: any) {
         const t1 = performance.now();
@@ -150,6 +169,16 @@ export function memoryExtensionFactory(
           documentId,
           transcriptChars: transcript.length,
           error: err?.message ?? String(err),
+        });
+        // Still log latency even on error
+        await trace.append({
+          type: "memory_latency",
+          projectTag,
+          bankId,
+          agentName,
+          sessionId,
+          recallMs: 0,
+          retainMs: Math.round(t1 - t0),
         });
       }
     });

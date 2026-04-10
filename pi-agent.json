@@ -16,11 +16,25 @@
       "repetitionPenalty": 1.0,
       "presencePenalty": null,
       "frequencyPenalty": null
+    },
+    "routing": {
+      "maxParallelDelegations": 2,
+      "maxNumSeqHint": 4,
+      "maxLoadedSessionsTotal": 8,
+      "maxLoadedSessionsPerPeer": 4,
+      "compactThresholdPercent": 75,
+      "retireAfterCompactions": 5,
+      "semantic": {
+        "enabled": true,
+        "updateCooldownMs": 3600000,
+        "maxCandidates": 8,
+        "model": "default"
+      }
     }
   },
   "agents": {
     "coordinator": {
-      "tools": ["read", "grep", "find", "ls", "delegate"],
+      "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch"],
       "thinkingLevel": "off",
       "sampling": {
         "temperature": 1.2,
@@ -28,6 +42,11 @@
         "topK": -1,
         "minP": 0.05,
         "presencePenalty": 1.0
+      },
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
       }
     },
     "coder": {

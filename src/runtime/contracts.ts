@@ -9,7 +9,12 @@ export const delegateRequestSchema = z.object({
   expectedOutput: z.string().default(""),
 });
 
+export const delegateBatchRequestSchema = z.object({
+  requests: z.array(delegateRequestSchema).min(1),
+});
+
 export type DelegateRequest = z.infer<typeof delegateRequestSchema>;
+export type DelegateBatchRequest = z.infer<typeof delegateBatchRequestSchema>;
 
 export const peerOutputSchema = z.object({
   summary: z.string().min(1),
@@ -27,6 +32,11 @@ export interface PeerResult {
   output: PeerOutput;
   reportSource: "tool" | "text";
   rawText?: string;
+  routing?: {
+    action: "resume" | "new" | "compact_then_resume";
+    reason?: string;
+    confidence?: number;
+  };
 }
 
 export function buildPeerDelegationPrompt(request: DelegateRequest, meta: { projectTag: string; coordinatorSessionId: string; peerSessionId: string; sessionState: "new" | "resumed" }): string {
@@ -58,6 +68,15 @@ export function buildPeerDelegationPrompt(request: DelegateRequest, meta: { proj
   );
   return sections.join("\n");
 }
+
+export const routingDecisionSchema = z.object({
+  action: z.enum(["resume", "new", "compact_then_resume"]),
+  sessionId: z.string().optional(),
+  reason: z.string().default(""),
+  confidence: z.number().min(0).max(1).default(0),
+});
+
+export type RoutingDecision = z.infer<typeof routingDecisionSchema>;
 
 export function parsePeerOutput(rawText: string): { output: PeerOutput; parseError?: string } {
   const trimmed = rawText.trim();

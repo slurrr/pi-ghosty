@@ -20,6 +20,39 @@ export const agentConfigSchema = z.object({
   sampling: samplingSchema.optional(),
 });
 
+const routingSchema = z.object({
+  maxParallelDelegations: z.number().int().positive().default(2),
+  maxNumSeqHint: z.number().int().positive().default(4),
+  maxLoadedSessionsTotal: z.number().int().positive().default(8),
+  maxLoadedSessionsPerPeer: z.number().int().positive().default(4),
+  compactThresholdPercent: z.number().min(0).max(100).default(75),
+  retireAfterCompactions: z.number().int().nonnegative().default(5),
+  semantic: z.object({
+    enabled: z.literal(true).default(true),
+    updateCooldownMs: z.number().int().nonnegative().default(3600000),
+    maxCandidates: z.number().int().positive().default(8),
+    model: z.string().default("default"),
+  }).default({
+    enabled: true,
+    updateCooldownMs: 3600000,
+    maxCandidates: 8,
+    model: "default",
+  }),
+}).default({
+  maxParallelDelegations: 2,
+  maxNumSeqHint: 4,
+  maxLoadedSessionsTotal: 8,
+  maxLoadedSessionsPerPeer: 4,
+  compactThresholdPercent: 75,
+  retireAfterCompactions: 5,
+  semantic: {
+    enabled: true,
+    updateCooldownMs: 3600000,
+    maxCandidates: 8,
+    model: "default",
+  },
+});
+
 export const ghostyConfigSchema = z.object({
   defaults: z.object({
     vllmBaseUrl: z.string().url(),
@@ -31,6 +64,20 @@ export const ghostyConfigSchema = z.object({
       maxTokens: z.number().int().positive(),
     }),
     sampling: samplingSchema.optional(),
+    routing: routingSchema.optional().default({
+      maxParallelDelegations: 2,
+      maxNumSeqHint: 4,
+      maxLoadedSessionsTotal: 8,
+      maxLoadedSessionsPerPeer: 4,
+      compactThresholdPercent: 75,
+      retireAfterCompactions: 5,
+      semantic: {
+        enabled: true,
+        updateCooldownMs: 3600000,
+        maxCandidates: 8,
+        model: "default",
+      },
+    }),
   }),
   agents: z.record(z.string(), agentConfigSchema),
 });

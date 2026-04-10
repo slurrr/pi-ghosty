@@ -1,4 +1,5 @@
-import type { AgentSession, AgentSessionServices } from "@mariozechner/pi-coding-agent";
+import { resolve } from "node:path";
+import { SessionManager, type AgentSession, type AgentSessionServices } from "@mariozechner/pi-coding-agent";
 import type { Env } from "../env.js";
 import type { GhostyConfig } from "../config/schema.js";
 import { createGhostySession } from "../pi/createSession.js";
@@ -6,15 +7,21 @@ import { ArtifactStore } from "../artifacts/store.js";
 import { JsonlTrace } from "../logging/jsonlTrace.js";
 import {
   buildPeerDelegationPrompt,
+  delegateBatchRequestSchema,
   delegateRequestSchema,
   peerOutputSchema,
+  type DelegateBatchRequest,
   type DelegateRequest,
   type PeerOutput,
   type PeerResult,
   ghostyPeerNames,
 } from "./contracts.js";
 import { createDelegateTool } from "./delegateTool.js";
-import { createPeerReportTool } from "./peerReportTool.js";
+import { createDelegateBatchTool } from "./delegateBatchTool.js";
+import { KeyedMutex, Semaphore } from "./concurrency.js";
+import { SessionCatalogStore, type CatalogEntry, type PeerName } from "./sessionCatalogStore.js";
+import { SessionPool } from "./sessionPool.js";
+import { Router } from "./router.js";
 
 function lastAssistantText(session: AgentSession): string {
   const messages = session.messages;
@@ -41,13 +48,13 @@ export interface GhostyRuntimeOptions {
   env: Env;
   config: GhostyConfig;
 
-  // Optional override to support interactive runtime operations like /new and /resume.
   coordinatorSessionManager?: import("@mariozechner/pi-coding-agent").SessionManager;
   coordinatorSessionStartEvent?: import("@mariozechner/pi-coding-agent").SessionStartEvent;
 }
 
 interface SessionHandle {
   session: AgentSession;
+  sessionManager?: SessionManager;
   sessionId: string;
   sessionState: "new" | "resumed";
   services?: AgentSessionServices;
@@ -56,7 +63,12 @@ interface SessionHandle {
 }
 
 export class GhostyRuntime {
-  private readonly peers = new Map<(typeof ghostyPeerNames)[number], SessionHandle>();
+  private readonly semaphore: Semaphore;
+  private readonly sessionMutex = new KeyedMutex();
+  private readonly busySessionIds = new Set<string>();
+  private readonly pool: SessionPool;
+  private readonly catalogStore: SessionCatalogStore;
+  private readonly router: Router;
 
   private constructor(
     private readonly projectDir: string,
@@ -67,14 +79,25 @@ export class GhostyRuntime {
     private readonly coordinator: SessionHandle,
     private readonly trace: JsonlTrace,
     private readonly artifacts: ArtifactStore,
-  ) {}
+  ) {
+    const routing = this.config.defaults.routing;
+    this.semaphore = new Semaphore(routing.maxParallelDelegations);
+    this.pool = new SessionPool(this.projectDir, this.workDir, this.runDir, this.env, this.config);
+    this.catalogStore = new SessionCatalogStore(this.runDir, this.config.defaults.projectTag);
+    this.router = new Router(this.projectDir, this.workDir, this.runDir, this.env, this.config, this.catalogStore, this.trace);
+  }
 
   static async create(options: GhostyRuntimeOptions): Promise<GhostyRuntime> {
     const { projectDir, workDir, runDir, env, config, coordinatorSessionManager, coordinatorSessionStartEvent } = options;
     let delegateHandler = async (_request: DelegateRequest): Promise<PeerResult> => {
       throw new Error("Delegate handler is not ready");
     };
+    let delegateBatchHandler = async (_request: DelegateBatchRequest): Promise<PeerResult[]> => {
+      throw new Error("Delegate batch handler is not ready");
+    };
+
     const delegateTool = createDelegateTool((request) => delegateHandler(request));
+    const delegateBatchTool = createDelegateBatchTool((request) => delegateBatchHandler(request));
 
     const {
       session: coordinatorSession,
@@ -89,13 +112,14 @@ export class GhostyRuntime {
       env,
       config,
       agentName: "coordinator",
-      customTools: [delegateTool],
+      customTools: [delegateTool, delegateBatchTool],
       sessionManager: coordinatorSessionManager,
       sessionStartEvent: coordinatorSessionStartEvent,
     });
 
     const coordinator = {
       session: coordinatorSession,
+      sessionManager,
       sessionId: sessionManager.getSessionId(),
       sessionState: sessionManager.getEntries().length > 0 ? "resumed" : "new",
       services,
@@ -107,8 +131,11 @@ export class GhostyRuntime {
     const artifacts = ArtifactStore.forProject(runDir, config.defaults.projectTag);
 
     const runtime = new GhostyRuntime(projectDir, workDir, runDir, env, config, coordinator, trace, artifacts);
+    const catalog = await runtime.catalogStore.load();
+    await trace.append({ type: "session_catalog_loaded", version: catalog.version, counts: runtime.catalogStore.countByPeer() });
 
     delegateHandler = runtime.delegateToPeer.bind(runtime);
+    delegateBatchHandler = runtime.delegateBatch.bind(runtime);
     return runtime;
   }
 
@@ -160,151 +187,300 @@ export class GhostyRuntime {
     return reply;
   }
 
-  async getPeerSession(peerName: (typeof ghostyPeerNames)[number]): Promise<SessionHandle> {
-    const existing = this.peers.get(peerName);
-    if (existing) return existing;
-
-    const { session, sessionManager } = await createGhostySession({
-      projectDir: this.projectDir,
-      workDir: this.workDir,
-      runDir: this.runDir,
-      env: this.env,
-      config: this.config,
-      agentName: peerName,
-      customTools: [createPeerReportTool()],
-    });
-
-    const handle = {
-      session,
-      sessionId: sessionManager.getSessionId(),
-      sessionState: sessionManager.getEntries().length > 0 ? "resumed" : "new",
-    } as SessionHandle;
-    this.peers.set(peerName, handle);
-    return handle;
+  private peerSessionDir(peerName: PeerName): string {
+    return resolve(this.runDir, "data", "sessions", peerName);
   }
 
-  async delegateToPeer(request: DelegateRequest): Promise<PeerResult> {
-    const normalized = delegateRequestSchema.parse(request);
-    const peer = await this.getPeerSession(request.peerName);
+  private async syncPeerCatalog(peerName: PeerName): Promise<void> {
+    const infos = await SessionManager.list(this.workDir, this.peerSessionDir(peerName));
+    for (const info of infos) {
+      const existing = this.catalogStore.getEntry(peerName, info.id);
+      if (existing) continue;
 
-    await this.trace.append({
-      type: "delegate_start",
-      peerName: normalized.peerName,
-      peerSessionId: peer.sessionId,
-      peerSessionState: peer.sessionState,
-      taskLen: normalized.task.length,
-    });
+      const manager = SessionManager.open(info.path, this.peerSessionDir(peerName));
+      const header = manager.getHeader();
+      const compactions = manager.getEntries().filter((e: any) => e.type === "compaction").length;
+      const entry: CatalogEntry = {
+        peerName,
+        sessionId: info.id,
+        sessionFile: info.path,
+        createdAt: info.created.toISOString(),
+        lastUsedAt: info.modified.toISOString(),
+        cwd: header?.cwd ?? this.workDir,
+        stats: {
+          messageCount: info.messageCount,
+          contextPercent: null,
+          compactions,
+        },
+        semantic: {
+          title: (info.firstMessage || `${peerName} session`).slice(0, 80),
+          summary: info.firstMessage || "Imported session",
+          tags: [peerName, "imported"],
+          updatedAt: new Date(0).toISOString(),
+          source: "llm",
+          confidence: "low",
+        },
+      };
+      await this.catalogStore.upsert(peerName, entry);
+      await this.trace.append({ type: "session_catalog_updated", sessionId: entry.sessionId, fields: ["create_import"] });
+    }
+  }
 
-    const prompt = buildPeerDelegationPrompt(normalized, {
-      projectTag: this.config.defaults.projectTag,
-      coordinatorSessionId: this.coordinator.sessionId,
-      peerSessionId: peer.sessionId,
-      sessionState: peer.sessionState,
-    });
-
-    const beforeCount = peer.session.messages.length;
-    await peer.session.prompt(prompt, { source: "extension" });
-    const newMessages = peer.session.messages.slice(beforeCount);
-    let reportOutput: PeerOutput | undefined;
-    for (let i = newMessages.length - 1; i >= 0; i--) {
-      const m: any = newMessages[i];
-      if (m?.role !== "toolResult") continue;
-      if (m?.toolName !== "peer_report") continue;
-      const parsed = peerOutputSchema.safeParse(m.details);
-      if (parsed.success) {
-        reportOutput = parsed.data;
-      }
-      break;
+  private async ensureCatalogEntryForHandle(peerName: PeerName, sessionId: string, sessionFile: string, request: DelegateRequest): Promise<CatalogEntry> {
+    const existing = this.catalogStore.getEntry(peerName, sessionId);
+    if (existing) {
+      return this.router.ensureSemantic(existing, request);
     }
 
-    let output: PeerOutput;
-    let reportSource: "tool" | "text";
-    let rawText: string | undefined;
+    const now = new Date().toISOString();
+    const manager = SessionManager.open(sessionFile, this.peerSessionDir(peerName));
+    const header = manager.getHeader();
+    const entry: CatalogEntry = {
+      peerName,
+      sessionId,
+      sessionFile,
+      createdAt: now,
+      lastUsedAt: now,
+      cwd: header?.cwd ?? this.workDir,
+      stats: {
+        messageCount: manager.getEntries().filter((e: any) => e.type === "message").length,
+        contextPercent: null,
+        compactions: manager.getEntries().filter((e: any) => e.type === "compaction").length,
+      },
+      semantic: {
+        title: request.task.trim().slice(0, 80) || `${peerName} session`,
+        summary: request.context.trim() || request.task.trim(),
+        tags: [peerName, "new"],
+        updatedAt: new Date(0).toISOString(),
+        source: "llm",
+        confidence: "low",
+      },
+    };
+    await this.catalogStore.upsert(peerName, entry);
+    await this.trace.append({ type: "session_catalog_updated", sessionId, fields: ["create"] });
+    return this.router.ensureSemantic(entry, request);
+  }
 
-    if (reportOutput) {
-      output = reportOutput;
-      reportSource = "tool";
-    } else {
+  private async resolvePeerSession(request: DelegateRequest): Promise<{
+    handle: Awaited<ReturnType<SessionPool["createNew"]>>;
+    routing: { action: "resume" | "new" | "compact_then_resume"; reason?: string; confidence?: number };
+  }> {
+    const peerName = request.peerName;
+    await this.syncPeerCatalog(peerName);
+    const decision = await this.router.route(peerName, request);
+
+    if (decision.action === "new" || !decision.sessionId) {
+      const handle = await this.pool.createNew(peerName);
+      const sessionFile = handle.sessionManager.getSessionFile();
+      if (!sessionFile) throw new Error("New peer session has no backing file");
+      await this.ensureCatalogEntryForHandle(peerName, handle.sessionId, sessionFile, request);
+      return { handle, routing: { action: "new", reason: decision.reason, confidence: decision.confidence } };
+    }
+
+    const catalogEntry = this.catalogStore.getEntry(peerName, decision.sessionId);
+    if (!catalogEntry?.sessionFile) {
+      const handle = await this.pool.createNew(peerName);
+      const sessionFile = handle.sessionManager.getSessionFile();
+      if (!sessionFile) throw new Error("New peer session has no backing file");
+      await this.ensureCatalogEntryForHandle(peerName, handle.sessionId, sessionFile, request);
+      return { handle, routing: { action: "new", reason: "missing session file", confidence: 0 } };
+    }
+
+    const handle = await this.pool.loadExisting(peerName, catalogEntry.sessionFile);
+    await this.ensureCatalogEntryForHandle(peerName, handle.sessionId, catalogEntry.sessionFile, request);
+
+    return {
+      handle,
+      routing: {
+        action: decision.action,
+        reason: decision.reason,
+        confidence: decision.confidence,
+      },
+    };
+  }
+
+  private async executeDelegation(request: DelegateRequest): Promise<PeerResult> {
+    const normalized = delegateRequestSchema.parse(request);
+    const { handle: peer, routing } = await this.resolvePeerSession(normalized);
+
+    const sessionFile = peer.sessionManager.getSessionFile();
+    if (!sessionFile) {
+      throw new Error(`Peer session ${peer.sessionId} is not persisted`);
+    }
+
+    return this.sessionMutex.runExclusive(peer.sessionId, async () => {
+      this.busySessionIds.add(peer.sessionId);
+      this.pool.touch(peer.sessionId);
+
       await this.trace.append({
-        type: "peer_report_missing",
+        type: "delegate_start",
         peerName: normalized.peerName,
         peerSessionId: peer.sessionId,
+        peerSessionState: peer.sessionState,
+        taskLen: normalized.task.length,
       });
 
-      // Retry once with a minimal follow-up instruction to call peer_report.
-      const retryBefore = peer.session.messages.length;
-      await peer.session.prompt(
-        'Call the "peer_report" tool now with your result. Do not write additional text.',
-        { source: "extension" },
-      );
-      const retryNewMessages = peer.session.messages.slice(retryBefore);
-      for (let i = retryNewMessages.length - 1; i >= 0; i--) {
-        const m: any = retryNewMessages[i];
+      if (routing.action === "compact_then_resume") {
+        try {
+          await peer.session.compact("Compact for continued delegation in pi-ghosty.");
+        } catch {
+          // If compaction fails we continue and let the model/runtime decide naturally.
+        }
+      }
+
+      const prompt = buildPeerDelegationPrompt(normalized, {
+        projectTag: this.config.defaults.projectTag,
+        coordinatorSessionId: this.coordinator.sessionId,
+        peerSessionId: peer.sessionId,
+        sessionState: peer.sessionState,
+      });
+
+      const beforeCount = peer.session.messages.length;
+      await peer.session.prompt(prompt, { source: "extension" });
+      const newMessages = peer.session.messages.slice(beforeCount);
+      let reportOutput: PeerOutput | undefined;
+      for (let i = newMessages.length - 1; i >= 0; i--) {
+        const m: any = newMessages[i];
         if (m?.role !== "toolResult") continue;
         if (m?.toolName !== "peer_report") continue;
         const parsed = peerOutputSchema.safeParse(m.details);
-        if (parsed.success) {
-          reportOutput = parsed.data;
-        }
+        if (parsed.success) reportOutput = parsed.data;
         break;
       }
+
+      let output: PeerOutput;
+      let reportSource: "tool" | "text";
+      let rawText: string | undefined;
 
       if (reportOutput) {
         output = reportOutput;
         reportSource = "tool";
       } else {
-        // If the peer got stuck in a tool-failure loop, capture recent tool errors to surface to the coordinator.
-        const toolErrors: string[] = [];
-        for (let i = retryNewMessages.length - 1; i >= 0 && toolErrors.length < 8; i--) {
+        await this.trace.append({
+          type: "peer_report_missing",
+          peerName: normalized.peerName,
+          peerSessionId: peer.sessionId,
+        });
+
+        const retryBefore = peer.session.messages.length;
+        await peer.session.prompt('Call the "peer_report" tool now with your result. Do not write additional text.', {
+          source: "extension",
+        });
+        const retryNewMessages = peer.session.messages.slice(retryBefore);
+        for (let i = retryNewMessages.length - 1; i >= 0; i--) {
           const m: any = retryNewMessages[i];
           if (m?.role !== "toolResult") continue;
-          if (!m?.isError) continue;
-          const blocks = Array.isArray(m.content) ? m.content : [];
-          const text = blocks
-            .filter((b: any) => b?.type === "text" && typeof b.text === "string")
-            .map((b: any) => b.text)
-            .join("")
-            .trim();
-          toolErrors.push(`- ${m.toolName}: ${text || "(error)"}`);
+          if (m?.toolName !== "peer_report") continue;
+          const parsed = peerOutputSchema.safeParse(m.details);
+          if (parsed.success) reportOutput = parsed.data;
+          break;
         }
 
-        rawText = lastAssistantText(peer.session);
-        const summaryBase = rawText?.trim() ? rawText.trim() : "(no peer report)";
-        const summary = toolErrors.length > 0
-          ? `Peer did not produce peer_report (likely tool failure loop). Last errors:\n${toolErrors.reverse().join("\n")}\n\nLast assistant text: ${summaryBase}`
-          : summaryBase;
-
-        output = peerOutputSchema.parse({ summary });
-        reportSource = "text";
+        if (reportOutput) {
+          output = reportOutput;
+          reportSource = "tool";
+        } else {
+          rawText = lastAssistantText(peer.session);
+          output = peerOutputSchema.parse({ summary: rawText?.trim() || "(no peer report)" });
+          reportSource = "text";
+        }
       }
-    }
 
-    if (Array.isArray(output.artifacts)) {
-      for (const text of output.artifacts) {
-        await this.artifacts.append({
-          projectTag: this.config.defaults.projectTag,
-          peerName: normalized.peerName,
-          kind: "peer_artifact",
-          text,
+      if (Array.isArray(output.artifacts)) {
+        for (const text of output.artifacts) {
+          await this.artifacts.append({
+            projectTag: this.config.defaults.projectTag,
+            peerName: normalized.peerName,
+            kind: "peer_artifact",
+            text,
+          });
+        }
+      }
+
+      const stats = peer.session.getSessionStats();
+      const contextUsage: any = peer.session.getContextUsage();
+      const compactions = peer.session.sessionManager.getEntries().filter((e: any) => e.type === "compaction").length;
+      const nowIso = new Date().toISOString();
+
+      const updated = await this.catalogStore.patch(normalized.peerName, peer.sessionId, {
+        sessionFile,
+        lastUsedAt: nowIso,
+        stats: {
+          messageCount: stats.totalMessages,
+          toolCalls: stats.toolCalls,
+          contextPercent: typeof contextUsage?.percent === "number" ? contextUsage.percent : null,
+          compactions,
+        },
+      });
+
+      const retireAfter = this.config.defaults.routing.retireAfterCompactions;
+      if (updated && (updated.stats?.compactions ?? 0) >= retireAfter) {
+        await this.catalogStore.patch(normalized.peerName, peer.sessionId, {
+          status: { retired: true, retireReason: `compactions>=${retireAfter}` },
         });
       }
-    }
 
+      const catalogEntry = this.catalogStore.getEntry(normalized.peerName, peer.sessionId);
+      if (catalogEntry) {
+        await this.router.ensureSemantic(catalogEntry, normalized, output.summary);
+      }
+
+      await this.trace.append({
+        type: "session_catalog_updated",
+        sessionId: peer.sessionId,
+        fields: ["lastUsedAt", "stats", "semantic"],
+      });
+
+      await this.trace.append({
+        type: "delegate_end",
+        peerName: normalized.peerName,
+        peerSessionId: peer.sessionId,
+        peerSessionState: peer.sessionState,
+        reportSource,
+      });
+
+      this.pool.enforceCaps({
+        maxTotal: this.config.defaults.routing.maxLoadedSessionsTotal,
+        maxPerPeer: this.config.defaults.routing.maxLoadedSessionsPerPeer,
+        busySessionIds: this.busySessionIds,
+      });
+
+      this.busySessionIds.delete(peer.sessionId);
+
+      return {
+        peerName: normalized.peerName,
+        sessionId: peer.sessionId,
+        sessionState: peer.sessionState,
+        output,
+        reportSource,
+        rawText,
+        routing,
+      };
+    });
+  }
+
+  async delegateToPeer(request: DelegateRequest): Promise<PeerResult> {
+    return this.semaphore.withPermit(async () => this.executeDelegation(request));
+  }
+
+  async delegateBatch(request: DelegateBatchRequest): Promise<PeerResult[]> {
+    const normalized = delegateBatchRequestSchema.parse(request);
+    const started = Date.now();
     await this.trace.append({
-      type: "delegate_end",
-      peerName: normalized.peerName,
-      peerSessionId: peer.sessionId,
-      peerSessionState: peer.sessionState,
-      reportSource,
+      type: "delegate_batch_start",
+      requestCount: normalized.requests.length,
+      parallelism: this.config.defaults.routing.maxParallelDelegations,
     });
 
-    return {
-      peerName: normalized.peerName,
-      sessionId: peer.sessionId,
-      sessionState: peer.sessionState,
-      output,
-      reportSource,
-      rawText,
-    };
+    const results = await Promise.all(normalized.requests.map((r) => this.delegateToPeer(r)));
+
+    await this.trace.append({
+      type: "delegate_batch_end",
+      requestCount: normalized.requests.length,
+      durationMs: Date.now() - started,
+      parallelism: this.config.defaults.routing.maxParallelDelegations,
+      sessionLocks: this.sessionMutex.keys().length,
+    });
+    return results;
   }
 }
