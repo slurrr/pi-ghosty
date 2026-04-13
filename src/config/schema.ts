@@ -19,6 +19,10 @@ export const agentConfigSchema = z.object({
   thinkingLevel: thinkingLevelSchema.default("off"),
   sampling: samplingSchema.optional(),
 
+  // Optional default model for this agent/peer.
+  // Format: "provider/modelId" (preferred) or "modelId" (uses current provider).
+  defaultModel: z.string().min(1).optional(),
+
   // Provider-specific payload extensions for OpenAI-compatible backends (vLLM).
   // vLLM supports `extra_body` to pass through non-standard fields.
   // We accept both camelCase and snake_case for ergonomics.

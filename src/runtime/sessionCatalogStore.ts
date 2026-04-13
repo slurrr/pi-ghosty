@@ -30,6 +30,12 @@ export interface CatalogEntry {
     retired?: boolean;
     retireReason?: string;
   };
+  // Last selected model for the session (best-effort; used for routing constraints).
+  model?: {
+    provider: string;
+    id: string;
+  };
+
   semantic: {
     title: string;
     summary: string;

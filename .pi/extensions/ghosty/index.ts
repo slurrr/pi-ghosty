@@ -10,6 +10,7 @@ import {
   defineTool,
 } from "@mariozechner/pi-coding-agent";
 import { completeSimple } from "@mariozechner/pi-ai";
+import type { Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { loadConfig } from "../../../src/config/loadConfig.js";
 import { loadPeerPromptParts } from "../../../src/prompts/loadPeerPromptParts.js";
@@ -387,29 +388,113 @@ export default function (pi: any) {
     return updated;
   }
 
-  async function routePeerSession(peerName: string, request: any, ctx: any): Promise<{ sessionManager: SessionManager; sessionState: "new" | "resumed" }> {
+  let availableModelsPromise: Promise<Array<Model<any>>> | null = null;
+  async function getAvailableModels(ctx: any): Promise<Array<Model<any>>> {
+    if (!availableModelsPromise) {
+      availableModelsPromise = (async () => {
+        try {
+          // getAvailable() filters by configured auth.
+          const models = await ctx.modelRegistry.getAvailable();
+          return models as any;
+        } catch {
+          return [];
+        }
+      })();
+    }
+    return availableModelsPromise;
+  }
+
+  async function resolveModelSpec(spec: string, ctx: any): Promise<{ provider: string; id: string } | null> {
+    const raw = (spec || "").trim();
+    if (!raw) return null;
+
+    if (raw.includes("/")) {
+      const [provider, id] = raw.split("/", 2);
+      if (provider && id) return { provider, id };
+    }
+
+    const provider = ctx.model?.provider;
+    if (provider) {
+      // exact id first
+      const exact = ctx.modelRegistry.find(provider, raw);
+      if (exact) return { provider, id: exact.id };
+    }
+
+    // Fuzzy: match any available model id containing the token.
+    const available = await getAvailableModels(ctx);
+    const token = raw.toLowerCase();
+    const matches = available.filter((m: any) =>
+      String(m.id).toLowerCase().includes(token) || String(m.name ?? "").toLowerCase().includes(token),
+    );
+
+    if (matches.length === 1) {
+      return { provider: matches[0].provider, id: matches[0].id };
+    }
+
+    return null;
+  }
+
+  function modelKey(model: { provider: string; id: string } | null | undefined): string {
+    if (!model) return "";
+    return `${model.provider}/${model.id}`;
+  }
+
+  async function routePeerSession(peerName: string, request: any, ctx: any): Promise<{ sessionManager: SessionManager; sessionState: "new" | "resumed"; requiredModel?: { provider: string; id: string } | null }> {
     const peerSessionDir = resolve(runDir, "data", "sessions", peerName);
     mkdirSync(peerSessionDir, { recursive: true });
+
+    // Model constraint resolution (precedence):
+    // 1) explicit request.model
+    // 2) peer defaultModel from config
+    const peerDefaultModel = (config.agents?.[peerName]?.defaultModel ?? "").trim();
+    const requestedModelRaw = String(request?.model ?? "").trim();
+
+    let requiredModel: { provider: string; id: string } | null = null;
+    if (requestedModelRaw) {
+      requiredModel = await resolveModelSpec(requestedModelRaw, ctx);
+      if (!requiredModel) {
+        throw new Error(
+          `Could not resolve requested model: ${requestedModelRaw}. ` +
+            `Use provider/modelId or pick an exact model ID from /model.`,
+        );
+      }
+    } else if (peerDefaultModel) {
+      // Default model is best-effort: if it's unknown, fall back to normal routing.
+      requiredModel = await resolveModelSpec(peerDefaultModel, ctx);
+    }
 
     // If we have no sessions yet, continueRecent will create one.
     const infos = await SessionManager.list(ctx.cwd, peerSessionDir);
     if (infos.length === 0) {
-      return { sessionManager: SessionManager.continueRecent(ctx.cwd, peerSessionDir), sessionState: "new" };
+      return { sessionManager: SessionManager.continueRecent(ctx.cwd, peerSessionDir), sessionState: "new", requiredModel };
     }
 
     // Build routing candidates from catalog if available.
     await catalogLoaded;
     const maxCandidates = config.defaults.routing?.semantic?.maxCandidates ?? 8;
-    const candidates = catalogStore
+    let candidates = catalogStore
       .list(peerName as any)
       .filter((e) => !e.status?.retired)
       .sort((a, b) => Date.parse(b.lastUsedAt) - Date.parse(a.lastUsedAt))
       .slice(0, maxCandidates);
 
+    // If a model is required, only consider sessions already on that model.
+    if (requiredModel) {
+      const key = modelKey(requiredModel);
+      candidates = candidates.filter((c: any) => modelKey(c.model) === key);
+    }
+
     // If we don't have enough catalog data yet, default to most recent session.
     if (candidates.length <= 1) {
+      if (requiredModel && candidates.length === 0) {
+        // Hard constraint: no matching sessions -> start a new one.
+        const sm = SessionManager.continueRecent(ctx.cwd, peerSessionDir);
+        sm.newSession();
+        return { sessionManager: sm, sessionState: "new", requiredModel };
+      }
+
       const mostRecent = [...infos].sort((a: any, b: any) => +b.modified - +a.modified)[0];
-      return { sessionManager: SessionManager.open(mostRecent.path, peerSessionDir), sessionState: "resumed" };
+      return { sessionManager: SessionManager.open(mostRecent.path, peerSessionDir), sessionState: "resumed", requiredModel };
     }
 
     const prompt = [
@@ -421,6 +506,7 @@ export default function (pi: any) {
       `projectTag: ${config.defaults.projectTag}`,
       `task: ${request.task}`,
       `context: ${request.context || ""}`,
+      `requiredModel: ${requiredModel ? modelKey(requiredModel) : "(none)"}`,
       "",
       "Candidates:",
       ...candidates.map((c) => {
@@ -438,21 +524,21 @@ export default function (pi: any) {
       if (decision.success && decision.data.action === "resume" && decision.data.sessionId) {
         const chosen = candidates.find((c) => c.sessionId === decision.data.sessionId);
         if (chosen?.sessionFile) {
-          return { sessionManager: SessionManager.open(chosen.sessionFile, peerSessionDir), sessionState: "resumed" };
+          return { sessionManager: SessionManager.open(chosen.sessionFile, peerSessionDir), sessionState: "resumed", requiredModel };
         }
       }
 
       if (decision.success && decision.data.action === "new") {
         const sm = SessionManager.continueRecent(ctx.cwd, peerSessionDir);
         sm.newSession();
-        return { sessionManager: sm, sessionState: "new" };
+        return { sessionManager: sm, sessionState: "new", requiredModel };
       }
     } catch {
       // ignore and fall back
     }
 
     const mostRecent = [...infos].sort((a: any, b: any) => +b.modified - +a.modified)[0];
-    return { sessionManager: SessionManager.open(mostRecent.path, peerSessionDir), sessionState: "resumed" };
+    return { sessionManager: SessionManager.open(mostRecent.path, peerSessionDir), sessionState: "resumed", requiredModel };
   }
 
   async function ensureCatalogEntry(peerName: string, peerSessionManager: SessionManager, ctx: any): Promise<CatalogEntry> {
@@ -514,7 +600,7 @@ export default function (pi: any) {
     const parsed = delegateRequestSchema.parse(request);
 
     const peerSessionDir = resolve(runDir, "data", "sessions", parsed.peerName);
-    const { sessionManager: peerSessionManager, sessionState } = await routePeerSession(parsed.peerName, parsed, ctx);
+    const { sessionManager: peerSessionManager, sessionState, requiredModel } = await routePeerSession(parsed.peerName, parsed, ctx);
     const peerSessionId = peerSessionManager.getSessionId();
 
     let entry = await ensureCatalogEntry(parsed.peerName, peerSessionManager, ctx);
@@ -547,34 +633,39 @@ export default function (pi: any) {
       customTools: [createPeerReportTool()],
     });
 
+    function isModelUnsupportedError(errMsg: string): boolean {
+      const s = (errMsg || "").toLowerCase();
+      return s.includes("model is not supported") || s.includes("not supported") || s.includes("unsupported");
+    }
+
+    // Apply required model (best-effort) while preventing the session from getting wedged.
+    // NOTE: SessionManager.setModel() will happily persist model_change even if the upstream
+    // later rejects the model. We detect that and revert.
+    let modelSwitched = false;
+    let previousModel: any = session.model;
+
+    if (requiredModel) {
+      const model = ctx.modelRegistry.find(requiredModel.provider, requiredModel.id);
+      if (!model) {
+        throw new Error(`Unknown model: ${modelKey(requiredModel)}. Use /model to see available models.`);
+      }
+
+      if (!ctx.modelRegistry.hasConfiguredAuth(model)) {
+        throw new Error(`No auth configured for model ${modelKey(requiredModel)}. Run /login ${requiredModel.provider} or pick a different model.`);
+      }
+
+      if (!session.model || session.model.provider !== model.provider || session.model.id !== model.id) {
+        await session.setModel(model);
+        modelSwitched = true;
+      }
+    }
+
     // Enforce per-peer tool surface from pi-agent.json.
     // The peer_report tool is always enabled for peers.
     const allowedTools = (config.agents?.[parsed.peerName]?.tools ?? []) as string[];
     session.setActiveToolsByName([...allowedTools, "peer_report"]);
 
-    // Per-delegation model selection:
-    // - If request.model provided, force that model.
-    // - Else if this is a new session and coordinator has a model, use coordinator's model.
-    const requestedModel = String((parsed as any).model ?? "").trim();
-    const shouldDefaultToCoordinator = sessionState === "new" && !!ctx.model;
-    const desiredModelSpec = requestedModel || (shouldDefaultToCoordinator ? `${ctx.model.provider}/${ctx.model.id}` : "");
-
-    if (desiredModelSpec) {
-      const [prov, id] = desiredModelSpec.includes("/")
-        ? desiredModelSpec.split("/", 2)
-        : [ctx.model?.provider ?? "", desiredModelSpec];
-
-      if (prov && id) {
-        const model = ctx.modelRegistry.find(prov, id);
-        if (!model) {
-          throw new Error(`Unknown model: ${desiredModelSpec}. Use /model to see available models.`);
-        }
-        // Switch only if needed.
-        if (!session.model || session.model.provider !== model.provider || session.model.id !== model.id) {
-          await session.setModel(model);
-        }
-      }
-    }
+    // Note: model selection is handled via requiredModel routing constraint above.
 
     const prompt = buildPeerDelegationPrompt(parsed, {
       projectTag: config.defaults.projectTag,
@@ -586,7 +677,27 @@ export default function (pi: any) {
     const before = session.messages.length;
     await session.prompt(prompt, { source: "extension" });
 
-    const newMessages: any[] = session.messages.slice(before);
+    let newMessages: any[] = session.messages.slice(before);
+
+    // If the prompt failed due to an unsupported model and we switched models, revert and retry once.
+    const lastAssistant = [...newMessages].reverse().find((m) => m?.role === "assistant");
+    const lastError =
+      lastAssistant?.stopReason === "error" && typeof lastAssistant?.errorMessage === "string"
+        ? lastAssistant.errorMessage
+        : "";
+
+    const hasPeerReport = newMessages.some((m) => m?.role === "toolResult" && m?.toolName === "peer_report");
+
+    if (!hasPeerReport && modelSwitched && lastError && isModelUnsupportedError(lastError) && previousModel) {
+      try {
+        await session.setModel(previousModel);
+        await session.prompt(prompt, { source: "extension" });
+        newMessages = session.messages.slice(before);
+      } catch {
+        // ignore
+      }
+    }
+
     let output: any | undefined;
     for (let i = newMessages.length - 1; i >= 0; i--) {
       const m = newMessages[i];
@@ -608,6 +719,7 @@ export default function (pi: any) {
     const compactionsAfter = allEntries.filter((e: any) => e.type === "compaction").length;
     entry = (await catalogStore.patch(parsed.peerName as any, peerSessionId, {
       lastUsedAt: new Date().toISOString(),
+      model: session.model ? { provider: session.model.provider, id: session.model.id } : undefined,
       stats: {
         messageCount: messageCountAfter,
         compactions: compactionsAfter,
@@ -681,6 +793,9 @@ export default function (pi: any) {
             peerName: "researcher",
             task: "Call peer_report with summary exactly: smoke test ok",
             expectedOutput: "A peer_report response with summary exactly: smoke test ok",
+            // Force the coordinator's current model for smoke so we don't get stuck
+            // resuming a peer session wedged on an unsupported model.
+            model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
           },
           ctx,
         );
