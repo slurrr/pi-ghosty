@@ -92,6 +92,33 @@ export default function (pi: any) {
   const catalogStore = new SessionCatalogStore(runDir, config.defaults.projectTag);
   const catalogLoaded = catalogStore.load();
 
+  function inferRoleFromSessionFile(sessionFile: string | null | undefined): string {
+    const file = sessionFile ?? "";
+    for (const peerName of ghostyPeerNames) {
+      const needle = resolve(runDir, "data", "sessions", peerName) + "/";
+      if (file.startsWith(needle)) return peerName;
+    }
+    // Everything else is treated as the coordinator session.
+    return "coordinator";
+  }
+
+  function applyToolSurface(role: string) {
+    const tools = (config.agents?.[role]?.tools ?? []) as string[];
+    // Only set tools that are actually registered/known in this pi instance.
+    const available = new Set((pi.getAllTools?.() ?? []).map((t: any) => t.name));
+    const filtered = tools.filter((t) => available.has(t));
+    if (filtered.length > 0) {
+      pi.setActiveTools(filtered);
+    }
+  }
+
+  // Ensure coordinator does NOT get write/edit/bash unless explicitly allowed.
+  // Also ensures peer sessions opened via /peer open get their configured surfaces.
+  pi.on?.("session_start", async (_event: any, ctx: any) => {
+    const role = inferRoleFromSessionFile(ctx?.sessionManager?.getSessionFile?.());
+    applyToolSurface(role);
+  });
+
   async function askJson(prompt: string, ctx: any): Promise<string> {
     if (!ctx.model) throw new Error("No model selected.");
 
