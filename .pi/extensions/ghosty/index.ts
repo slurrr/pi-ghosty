@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +25,8 @@ import { createPeerReportTool } from "../../../src/runtime/peerReportTool.js";
 import { Semaphore } from "../../../src/runtime/concurrency.js";
 import { SessionCatalogStore, type CatalogEntry } from "../../../src/runtime/sessionCatalogStore.js";
 import { formatSessionName } from "../../../src/runtime/sessionNaming.js";
+
+const GHOSTY_PROMPT_MARKER = "GHOSTY_PROMPT_MARKER_v1";
 
 function getProjectDirFromImportMetaUrl(metaUrl: string): string {
   const extensionDir = dirname(fileURLToPath(metaUrl));
@@ -81,10 +83,21 @@ function safeJsonParse<T>(text: string): T | undefined {
   }
 }
 
+function extractGuidelines(systemPrompt: string): string | null {
+  const marker = "\nGuidelines:\n";
+  const start = systemPrompt.indexOf(marker);
+  if (start < 0) return null;
+  const rest = systemPrompt.slice(start + marker.length);
+  const end = rest.indexOf("\n\nPi documentation");
+  const block = (end >= 0 ? rest.slice(0, end) : rest).trim();
+  return block || null;
+}
+
 export default function (pi: any) {
   const projectDir = getProjectDirFromImportMetaUrl(import.meta.url);
   const config = loadConfig(projectDir);
   const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty-pi");
+  const appendSystemPath = resolve(projectDir, ".pi", "APPEND_SYSTEM.md");
 
   const maxParallelDelegations = config.defaults.routing?.maxParallelDelegations ?? 2;
   const delegationSemaphore = new Semaphore(maxParallelDelegations);
@@ -112,11 +125,52 @@ export default function (pi: any) {
     }
   }
 
+  function buildCoordinatorPromptAppend(): string {
+    const out: string[] = [];
+
+    try {
+      if (existsSync(appendSystemPath)) {
+        const sharedAppend = readFileSync(appendSystemPath, "utf-8").trimEnd();
+        if (sharedAppend.trim()) out.push(sharedAppend);
+      }
+    } catch {
+      // ignore
+    }
+
+    const coordinatorParts = loadPeerPromptParts(projectDir, "coordinator");
+    if (coordinatorParts.joined.trim()) out.push(coordinatorParts.joined);
+
+    return out.join("\n\n").trim();
+  }
+
+  let activeRole = "coordinator";
+  const coordinatorPromptAppend = buildCoordinatorPromptAppend();
+
   // Ensure coordinator does NOT get write/edit/bash unless explicitly allowed.
   // Also ensures peer sessions opened via /peer open get their configured surfaces.
   pi.on?.("session_start", async (_event: any, ctx: any) => {
     const role = inferRoleFromSessionFile(ctx?.sessionManager?.getSessionFile?.());
+    activeRole = role;
     applyToolSurface(role);
+  });
+
+  // Ensure coordinator system prompt includes the project append + coordinator role parts
+  // even when pi is run from outside the repo (cwd != projectDir).
+  pi.on?.("before_agent_start", (event: any) => {
+    if (activeRole !== "coordinator") return undefined;
+    if (typeof event?.systemPrompt !== "string") return undefined;
+    if (event.systemPrompt.includes(GHOSTY_PROMPT_MARKER)) return undefined;
+    if (!coordinatorPromptAppend) return undefined;
+
+    const injected = [
+      event.systemPrompt.trimEnd(),
+      "",
+      GHOSTY_PROMPT_MARKER,
+      "",
+      coordinatorPromptAppend,
+    ].join("\n");
+
+    return { systemPrompt: injected };
   });
 
   async function askJson(prompt: string, ctx: any): Promise<string> {
@@ -501,6 +555,52 @@ export default function (pi: any) {
       const msg = `Unknown subcommand: ${subcommand}. Try: /ghosty status or /ghosty smoke`;
       if (ctx.hasUI) ctx.ui.notify(msg, "warning");
       else process.stdout.write(`${msg}\n`);
+    },
+  });
+
+  pi.registerCommand("system", {
+    description: "Show or dump the current effective system prompt. Usage: /system [dump|guidelines|dump guidelines]",
+    handler: async (args: string, ctx: any) => {
+      const target = args.trim().toLowerCase();
+      const prompt = ctx.getSystemPrompt?.();
+      if (!prompt) {
+        const msg = "No system prompt available.";
+        if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+        else process.stdout.write(`${msg}\n`);
+        return;
+      }
+
+      const isDump = target === "dump" || target === "dump guidelines";
+      const isGuidelines = target === "guidelines" || target === "dump guidelines";
+      const showPrompt = target === "";
+
+      if (!isDump && !isGuidelines && !showPrompt) {
+        const msg = "Usage: /system [dump|guidelines|dump guidelines]";
+        if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+        else process.stdout.write(`${msg}\n`);
+        return;
+      }
+
+      const content = isGuidelines ? extractGuidelines(prompt) ?? "(guidelines section not found)" : prompt;
+
+      if (isDump) {
+        const debugDir = resolve(runDir, "data", "debug");
+        mkdirSync(debugDir, { recursive: true });
+        const ts = new Date().toISOString().replace(/[:.]/g, "-");
+        const prefix = isGuidelines ? "system-guidelines" : "system";
+        const outPath = resolve(debugDir, `${prefix}-${ctx.sessionManager.getSessionId()}-${ts}.txt`);
+        writeFileSync(outPath, content, "utf8");
+        const msg = `Wrote ${outPath}`;
+        if (ctx.hasUI) ctx.ui.notify(msg, "info");
+        else process.stdout.write(`${msg}\n`);
+        return;
+      }
+
+      if (ctx.hasUI) {
+        await ctx.ui.editor(isGuidelines ? "System guidelines" : "System prompt", content);
+      } else {
+        process.stdout.write(`${content}\n`);
+      }
     },
   });
 
