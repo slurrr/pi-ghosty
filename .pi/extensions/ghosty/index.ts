@@ -5,6 +5,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   SessionManager,
+  SettingsManager,
   createAgentSessionFromServices,
   createAgentSessionServices,
   defineTool,
@@ -12,7 +13,7 @@ import {
 import { completeSimple } from "@mariozechner/pi-ai";
 import type { Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
-import { loadConfig } from "../../../src/config/loadConfig.js";
+import { loadConfigFromFile } from "../../../src/config/loadConfig.js";
 import { loadPeerPromptParts } from "../../../src/prompts/loadPeerPromptParts.js";
 import {
   buildPeerDelegationPrompt,
@@ -134,7 +135,13 @@ function stripProjectContext(systemPrompt: string): string {
 
 export default function (pi: any) {
   const projectDir = getProjectDirFromImportMetaUrl(import.meta.url);
-  const config = loadConfig(projectDir);
+  const rawConfigPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim();
+  if (!rawConfigPath) {
+    throw new Error("Set GHOSTY_AGENT_CONFIG_PATH to a ghosty config file (e.g. ./pi-agent.frontier.json)");
+  }
+
+  const resolvedConfigPath = resolve(projectDir, rawConfigPath);
+  const config = loadConfigFromFile(resolvedConfigPath);
   const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty-pi");
   const appendSystemPath = resolve(projectDir, ".pi", "APPEND_SYSTEM.md");
 
@@ -388,6 +395,56 @@ export default function (pi: any) {
     return updated;
   }
 
+  const thinkingLevels = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
+
+  function stripThinkingSuffix(value: string): string {
+    const text = String(value || "").trim();
+    const i = text.lastIndexOf(":");
+    if (i < 0) return text;
+    const suffix = text.slice(i + 1).toLowerCase();
+    if (!thinkingLevels.has(suffix)) return text;
+    return text.slice(0, i).trim();
+  }
+
+  function globToRegex(pattern: string): RegExp {
+    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+    const regex = `^${escaped.replaceAll("*", ".*").replaceAll("?", ".")}$`;
+    return new RegExp(regex, "i");
+  }
+
+  function globMatches(pattern: string, value: string): boolean {
+    if (!pattern.trim() || !value.trim()) return false;
+    return globToRegex(pattern).test(value);
+  }
+
+  function modelKey(model: { provider: string; id: string } | null | undefined): string {
+    if (!model) return "";
+    return `${String(model.provider).toLowerCase()}/${stripThinkingSuffix(String(model.id)).toLowerCase()}`;
+  }
+
+  function modelMatchesPattern(model: Model<any>, pattern: string): boolean {
+    const normalizedPattern = stripThinkingSuffix(pattern);
+    const providerScopedId = modelKey(model);
+    const idOnly = stripThinkingSuffix(String(model.id));
+    return globMatches(normalizedPattern, providerScopedId) || globMatches(normalizedPattern, idOnly);
+  }
+
+  function isModelAllowed(model: Model<any>, patterns: string[]): boolean {
+    const activePatterns = patterns.map((p) => p.trim()).filter(Boolean);
+    const hasIncludes = activePatterns.some((p) => !p.startsWith("!"));
+    let allowed = !hasIncludes;
+
+    for (const pattern of activePatterns) {
+      const isExclude = pattern.startsWith("!");
+      const body = isExclude ? pattern.slice(1).trim() : pattern;
+      if (!body) continue;
+      if (!modelMatchesPattern(model, body)) continue;
+      allowed = !isExclude;
+    }
+
+    return allowed;
+  }
+
   let availableModelsPromise: Promise<Array<Model<any>>> | null = null;
   async function getAvailableModels(ctx: any): Promise<Array<Model<any>>> {
     if (!availableModelsPromise) {
@@ -404,26 +461,51 @@ export default function (pi: any) {
     return availableModelsPromise;
   }
 
+  async function getAllowedModels(ctx: any): Promise<{ patterns: string[]; available: Array<Model<any>>; allowed: Array<Model<any>> }> {
+    const available = await getAvailableModels(ctx);
+
+    let patterns: string[] = [];
+    try {
+      const settings = SettingsManager.create(ctx.cwd);
+      const rawPatterns = settings.getEnabledModels();
+      patterns = Array.isArray(rawPatterns) ? rawPatterns.map((p) => String(p).trim()).filter(Boolean) : [];
+    } catch {
+      patterns = [];
+    }
+
+    if (patterns.length === 0) {
+      return { patterns, available, allowed: available };
+    }
+
+    const allowed = available.filter((m) => isModelAllowed(m, patterns));
+    return { patterns, available, allowed };
+  }
+
   async function resolveModelSpec(spec: string, ctx: any): Promise<{ provider: string; id: string } | null> {
-    const raw = (spec || "").trim();
+    const raw = stripThinkingSuffix((spec || "").trim());
     if (!raw) return null;
 
+    const { allowed, available, patterns } = await getAllowedModels(ctx);
+    const pool = patterns.length > 0 ? allowed : available;
+
     if (raw.includes("/")) {
-      const [provider, id] = raw.split("/", 2);
-      if (provider && id) return { provider, id };
+      const [providerRaw, idRaw] = raw.split("/", 2);
+      const provider = providerRaw.trim().toLowerCase();
+      const id = stripThinkingSuffix(idRaw);
+      if (provider && id) {
+        const exact = pool.find((m: any) => modelKey(m) === modelKey({ provider, id }));
+        if (exact) return { provider: exact.provider, id: exact.id };
+      }
     }
 
-    const provider = ctx.model?.provider;
+    const provider = String(ctx.model?.provider || "").trim().toLowerCase();
     if (provider) {
-      // exact id first
-      const exact = ctx.modelRegistry.find(provider, raw);
-      if (exact) return { provider, id: exact.id };
+      const exact = pool.find((m: any) => String(m.provider).toLowerCase() === provider && stripThinkingSuffix(String(m.id)) === raw);
+      if (exact) return { provider: exact.provider, id: exact.id };
     }
 
-    // Fuzzy: match any available model id containing the token.
-    const available = await getAvailableModels(ctx);
     const token = raw.toLowerCase();
-    const matches = available.filter((m: any) =>
+    const matches = pool.filter((m: any) =>
       String(m.id).toLowerCase().includes(token) || String(m.name ?? "").toLowerCase().includes(token),
     );
 
@@ -432,11 +514,6 @@ export default function (pi: any) {
     }
 
     return null;
-  }
-
-  function modelKey(model: { provider: string; id: string } | null | undefined): string {
-    if (!model) return "";
-    return `${model.provider}/${model.id}`;
   }
 
   async function routePeerSession(peerName: string, request: any, ctx: any): Promise<{ sessionManager: SessionManager; sessionState: "new" | "resumed"; requiredModel?: { provider: string; id: string } | null }> {
@@ -454,8 +531,8 @@ export default function (pi: any) {
       requiredModel = await resolveModelSpec(requestedModelRaw, ctx);
       if (!requiredModel) {
         throw new Error(
-          `Could not resolve requested model: ${requestedModelRaw}. ` +
-            `Use provider/modelId or pick an exact model ID from /model.`,
+          `Could not resolve requested model within your scoped models: ${requestedModelRaw}. ` +
+            `Adjust /scoped-models (settings.enabledModels) or request an allowed provider/modelId.`,
         );
       }
     } else if (peerDefaultModel) {
@@ -908,6 +985,7 @@ export default function (pi: any) {
       const extPath = fileURLToPath(import.meta.url);
       const cmd =
         `GHOSTY_PI_RUN_DIR=${shellQuote(runDir)} ` +
+        `GHOSTY_AGENT_CONFIG_PATH=${shellQuote(resolvedConfigPath)} ` +
         `pi --session ${shellQuote(sessionPath)} --session-dir ${shellQuote(peerSessionDir)} -e ${shellQuote(extPath)}`;
 
       const res = spawnSync("tmux", ["new-window", "-n", peerName, cmd], {
