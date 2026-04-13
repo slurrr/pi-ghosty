@@ -25,6 +25,7 @@ import { createPeerReportTool } from "../../../src/runtime/peerReportTool.js";
 import { Semaphore } from "../../../src/runtime/concurrency.js";
 import { SessionCatalogStore, type CatalogEntry } from "../../../src/runtime/sessionCatalogStore.js";
 import { formatSessionName } from "../../../src/runtime/sessionNaming.js";
+import { roleSystemPromptExtensionFactory } from "../../../src/extensions/roleSystemPromptExtension.js";
 
 const GHOSTY_PROMPT_MARKER = "GHOSTY_PROMPT_MARKER_v1";
 
@@ -93,6 +94,14 @@ function extractGuidelines(systemPrompt: string): string | null {
   return block || null;
 }
 
+function replaceFirstParagraph(systemPrompt: string, replacement: string): string {
+  const normalized = systemPrompt.trimStart();
+  const paragraphEnd = normalized.indexOf("\n\n");
+  if (paragraphEnd === -1) return replacement;
+  const rest = normalized.slice(paragraphEnd).trimStart();
+  return `${replacement}\n\n${rest}`;
+}
+
 export default function (pi: any) {
   const projectDir = getProjectDirFromImportMetaUrl(import.meta.url);
   const config = loadConfig(projectDir);
@@ -154,23 +163,70 @@ export default function (pi: any) {
     applyToolSurface(role);
   });
 
-  // Ensure coordinator system prompt includes the project append + coordinator role parts
-  // even when pi is run from outside the repo (cwd != projectDir).
+  function computeGhostySystemPrompt(systemPrompt: string, role: string): string {
+    let out = systemPrompt;
+
+    // First paragraph rewriting for non-coder roles.
+    if (role !== "coder") {
+      const replacement = (() => {
+        if (role === "coordinator") {
+          return (
+            "You are the coordinator agent for pi-ghosty and the only user-facing agent. " +
+            "Your job is to be the user facing agent and use the `delegate` skill/tools (`delegate`, `delegate_batch`) to delegate tasks to specialist peers. " +
+            "Use the .pi/skills/delegate/SKILL.md file for guidance. " +
+            "Integrate peer results into a final answer for the user."
+          );
+        }
+        if (role === "researcher") {
+          return (
+            "You are the researcher peer for pi-ghosty (internal; not user-facing). " +
+            "Do local repository/system investigation only and report concise, reproducible findings back to the coordinator using the `peer-report` skill. " +
+            "Use the .pi/skills/peer-report/SKILL.md file for guidance."
+          );
+        }
+        if (role === "reviewer") {
+          return (
+            "You are the reviewer peer for pi-ghosty (internal; not user-facing). " +
+            "Review proposed changes for correctness, safety, and scope drift, and report concrete issues and a short checklist back to the coordinator."
+          );
+        }
+        if (role === "memory") {
+          return (
+            "You are the memory peer for pi-ghosty (internal; not user-facing). " +
+            "Focus on long-term memory behavior (recall/retain, tags, scopes, observations) and report recommendations back to the coordinator."
+          );
+        }
+        return undefined;
+      })();
+
+      if (replacement) {
+        const marker = "You are an expert coding assistant operating inside pi";
+        const normalized = out.trimStart();
+        if (normalized.startsWith(marker)) {
+          out = replaceFirstParagraph(out, replacement);
+        } else if (!normalized.startsWith(replacement)) {
+          out = `${replacement}\n\n${out}`;
+        }
+      }
+    }
+
+    // Coordinator append content (APPEND_SYSTEM + peers/coordinator parts).
+    if (role === "coordinator") {
+      if (!out.includes(GHOSTY_PROMPT_MARKER) && coordinatorPromptAppend) {
+        out = [out.trimEnd(), "", GHOSTY_PROMPT_MARKER, "", coordinatorPromptAppend].join("\n");
+      }
+    }
+
+    return out;
+  }
+
+  // Ensure system prompt has role framing (first paragraph rewrite) and
+  // coordinator append content.
   pi.on?.("before_agent_start", (event: any) => {
-    if (activeRole !== "coordinator") return undefined;
     if (typeof event?.systemPrompt !== "string") return undefined;
-    if (event.systemPrompt.includes(GHOSTY_PROMPT_MARKER)) return undefined;
-    if (!coordinatorPromptAppend) return undefined;
-
-    const injected = [
-      event.systemPrompt.trimEnd(),
-      "",
-      GHOSTY_PROMPT_MARKER,
-      "",
-      coordinatorPromptAppend,
-    ].join("\n");
-
-    return { systemPrompt: injected };
+    const computed = computeGhostySystemPrompt(event.systemPrompt, activeRole);
+    if (computed === event.systemPrompt) return undefined;
+    return { systemPrompt: computed };
   });
 
   async function askJson(prompt: string, ctx: any): Promise<string> {
@@ -415,6 +471,10 @@ export default function (pi: any) {
     const services = await createAgentSessionServices({
       cwd: ctx.cwd,
       resourceLoaderOptions: {
+        // Avoid auto-loading extensions from cwd. We only need our role system prompt shaper here.
+        noExtensions: true,
+        extensionFactories: [roleSystemPromptExtensionFactory(parsed.peerName)],
+
         appendSystemPrompt: resolve(projectDir, ".pi", "APPEND_SYSTEM.md"),
         additionalSkillPaths: [resolve(projectDir, ".pi", "skills")],
         appendSystemPromptOverride: (base) => {
@@ -581,7 +641,10 @@ export default function (pi: any) {
         return;
       }
 
-      const content = isGuidelines ? extractGuidelines(prompt) ?? "(guidelines section not found)" : prompt;
+      // ctx.getSystemPrompt() may return the base prompt when invoked as a command.
+      // Show what the next turn will see by applying ghosty transformations.
+      const effectivePrompt = computeGhostySystemPrompt(prompt, activeRole);
+      const content = isGuidelines ? extractGuidelines(effectivePrompt) ?? "(guidelines section not found)" : effectivePrompt;
 
       if (isDump) {
         const debugDir = resolve(runDir, "data", "debug");
