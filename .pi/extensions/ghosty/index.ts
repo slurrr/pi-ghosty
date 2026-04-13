@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -48,6 +49,11 @@ function hasPersistedPeerSessions(peerSessionDir: string): boolean {
   } catch {
     return false;
   }
+}
+
+function shellQuote(value: string): string {
+  // Minimal POSIX shell quoting suitable for passing a single command string to tmux.
+  return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
 export default function (pi: any) {
@@ -170,6 +176,72 @@ export default function (pi: any) {
       const msg = `Unknown subcommand: ${subcommand}. Try: /ghosty status or /ghosty smoke`;
       if (ctx.hasUI) ctx.ui.notify(msg, "warning");
       else process.stdout.write(`${msg}\n`);
+    },
+  });
+
+  pi.registerCommand("peer", {
+    description: "Peer utilities. Subcommands: open <peer>",
+    handler: async (args: string, ctx: any) => {
+      const parts = args.trim().split(/\s+/).filter(Boolean);
+      const subcommand = (parts[0] || "open").toLowerCase();
+
+      if (subcommand !== "open") {
+        const msg = `Unknown subcommand: ${subcommand}. Try: /peer open <peer>`;
+        if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+        else process.stdout.write(`${msg}\n`);
+        return;
+      }
+
+      const peerName = parts[1];
+      if (!peerName || !ghostyPeerNames.includes(peerName as any)) {
+        const msg = `Usage: /peer open <peer> (one of: ${ghostyPeerNames.join(", ")})`;
+        if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+        else process.stdout.write(`${msg}\n`);
+        return;
+      }
+
+      if (!process.env.TMUX) {
+        const msg = "Not running inside tmux (TMUX env var not set). Start pi from tmux to use /peer open.";
+        if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+        else process.stdout.write(`${msg}\n`);
+        return;
+      }
+
+      const peerSessionDir = resolve(runDir, "data", "sessions", peerName);
+      mkdirSync(peerSessionDir, { recursive: true });
+
+      const sessions = await SessionManager.list(ctx.cwd, peerSessionDir);
+      if (sessions.length === 0) {
+        const msg = `No peer sessions found for ${peerName}. Delegate once first.`;
+        if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+        else process.stdout.write(`${msg}\n`);
+        return;
+      }
+
+      const mostRecent = [...sessions].sort((a: any, b: any) => +b.modified - +a.modified)[0];
+      const sessionPath = mostRecent.path;
+
+      // Open a new tmux window running pi on the peer session.
+      // We pass -e <this extension> so the same tools/commands are available.
+      const extPath = fileURLToPath(import.meta.url);
+      const cmd =
+        `GHOSTY_PI_RUN_DIR=${shellQuote(runDir)} ` +
+        `pi --session ${shellQuote(sessionPath)} --session-dir ${shellQuote(peerSessionDir)} -e ${shellQuote(extPath)}`;
+
+      const res = spawnSync("tmux", ["new-window", "-n", peerName, cmd], {
+        encoding: "utf8",
+      });
+
+      if (res.status !== 0) {
+        const msg = `tmux new-window failed (exit ${res.status}): ${(res.stderr || res.stdout || "").trim()}`;
+        if (ctx.hasUI) ctx.ui.notify(msg, "error");
+        else process.stdout.write(`${msg}\n`);
+        return;
+      }
+
+      const ok = `Opened tmux window for ${peerName} (${sessionPath})`;
+      if (ctx.hasUI) ctx.ui.notify(ok, "info");
+      else process.stdout.write(`${ok}\n`);
     },
   });
 
