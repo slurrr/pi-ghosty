@@ -351,6 +351,11 @@ export default function (pi: any) {
       customTools: [createPeerReportTool()],
     });
 
+    // Enforce per-peer tool surface from pi-agent.json.
+    // The peer_report tool is always enabled for peers.
+    const allowedTools = (config.agents?.[parsed.peerName]?.tools ?? []) as string[];
+    session.setActiveToolsByName([...allowedTools, "peer_report"]);
+
     const prompt = buildPeerDelegationPrompt(parsed, {
       projectTag: config.defaults.projectTag,
       coordinatorSessionId: ctx.sessionManager.getSessionId(),
