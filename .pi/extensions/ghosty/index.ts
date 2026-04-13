@@ -14,11 +14,13 @@ import { loadConfig } from "../../../src/config/loadConfig.js";
 import { loadPeerPromptParts } from "../../../src/prompts/loadPeerPromptParts.js";
 import {
   buildPeerDelegationPrompt,
+  delegateBatchRequestSchema,
   delegateRequestSchema,
   ghostyPeerNames,
   peerOutputSchema,
 } from "../../../src/runtime/contracts.js";
 import { createPeerReportTool } from "../../../src/runtime/peerReportTool.js";
+import { Semaphore } from "../../../src/runtime/concurrency.js";
 
 function getProjectDirFromImportMetaUrl(metaUrl: string): string {
   const extensionDir = dirname(fileURLToPath(metaUrl));
@@ -60,6 +62,9 @@ export default function (pi: any) {
   const projectDir = getProjectDirFromImportMetaUrl(import.meta.url);
   const config = loadConfig(projectDir);
   const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty-pi");
+
+  const maxParallelDelegations = config.defaults.routing?.maxParallelDelegations ?? 2;
+  const delegationSemaphore = new Semaphore(maxParallelDelegations);
 
   async function delegateOnce(request: any, ctx: any) {
     if (!ctx.model) {
@@ -129,6 +134,10 @@ export default function (pi: any) {
       sessionState,
       output,
     };
+  }
+
+  async function delegateOnceBounded(request: any, ctx: any) {
+    return delegationSemaphore.withPermit(() => delegateOnce(request, ctx));
   }
 
   pi.registerCommand("ghosty", {
@@ -262,10 +271,62 @@ export default function (pi: any) {
         expectedOutput: Type.Optional(Type.String()),
       }),
       execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
-        const result = await delegateOnce(params, ctx);
+        const result = await delegateOnceBounded(params, ctx);
         return {
           content: [{ type: "text", text: result.output.summary }],
           details: result,
+        };
+      },
+    }),
+  );
+
+  pi.registerTool(
+    defineTool({
+      name: "delegate_batch",
+      label: "Delegate Batch",
+      description: "Delegate multiple requests to specialist peers with bounded concurrency.",
+      parameters: Type.Object({
+        requests: Type.Array(
+          Type.Object({
+            peerName: Type.Union([
+              Type.Literal("coder"),
+              Type.Literal("researcher"),
+              Type.Literal("reviewer"),
+              Type.Literal("memory"),
+            ]),
+            task: Type.String({ minLength: 1 }),
+            context: Type.Optional(Type.String()),
+            expectedOutput: Type.Optional(Type.String()),
+          }),
+          { minItems: 1 },
+        ),
+      }),
+      execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+        const parsed = delegateBatchRequestSchema.safeParse(params);
+        if (!parsed.success) {
+          throw new Error(`Invalid delegate_batch request: ${parsed.error.message}`);
+        }
+
+        // Partial failures are returned as result objects with an error summary.
+        const settled = await Promise.allSettled(
+          parsed.data.requests.map((r) => delegateOnceBounded(r, ctx)),
+        );
+
+        const results = settled.map((s, i) => {
+          if (s.status === "fulfilled") return s.value;
+          const peerName = parsed.data.requests[i]?.peerName ?? "researcher";
+          return {
+            peerName,
+            sessionId: "(error)",
+            sessionState: "new" as const,
+            output: { summary: `delegate_batch error: ${String((s.reason as any)?.message ?? s.reason)}` },
+          };
+        });
+
+        const summary = results.map((r) => `@${r.peerName}: ${r.output.summary}`).join("\n");
+        return {
+          content: [{ type: "text", text: summary || "ok" }],
+          details: results,
         };
       },
     }),
