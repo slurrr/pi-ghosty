@@ -163,26 +163,46 @@ export default function (pi: any) {
     }
   }
 
-  function buildCoordinatorPromptAppend(): string {
-    const out: string[] = [];
-
-    try {
-      if (existsSync(appendSystemPath)) {
-        const sharedAppend = readFileSync(appendSystemPath, "utf-8").trimEnd();
-        if (sharedAppend.trim()) out.push(sharedAppend);
-      }
-    } catch {
-      // ignore
-    }
-
-    const coordinatorParts = loadPeerPromptParts(projectDir, "coordinator");
-    if (coordinatorParts.joined.trim()) out.push(coordinatorParts.joined);
-
-    return out.join("\n\n").trim();
+  function removeAll(haystack: string, needle: string): string {
+    if (!needle.trim()) return haystack;
+    // remove both exact and trimmed occurrences
+    return haystack.split(needle).join("");
   }
 
+  function insertAfterFirstParagraph(systemPrompt: string, insertBlock: string): string {
+    if (!insertBlock.trim()) return systemPrompt;
+    const trimmed = systemPrompt.trimStart();
+    const paragraphEnd = trimmed.indexOf("\n\n");
+    if (paragraphEnd === -1) return `${trimmed}\n\n${insertBlock}`;
+    const head = trimmed.slice(0, paragraphEnd).trimEnd();
+    const rest = trimmed.slice(paragraphEnd).trimStart();
+    return `${head}\n\n${insertBlock}\n\n${rest}`;
+  }
+
+  const sharedAppendText = (() => {
+    try {
+      if (!existsSync(appendSystemPath)) return "";
+      return readFileSync(appendSystemPath, "utf-8").trim();
+    } catch {
+      return "";
+    }
+  })();
+
+  const coordinatorPartsText = (() => {
+    const parts = loadPeerPromptParts(projectDir, "coordinator");
+    return parts.joined.trim();
+  })();
+
+  const coordinatorInsertBlock = [
+    GHOSTY_PROMPT_MARKER,
+    sharedAppendText,
+    coordinatorPartsText,
+  ]
+    .filter((s) => !!s && s.trim())
+    .join("\n\n")
+    .trim();
+
   let activeRole = "coordinator";
-  const coordinatorPromptAppend = buildCoordinatorPromptAppend();
 
   // Ensure coordinator does NOT get write/edit/bash unless explicitly allowed.
   // Also ensures peer sessions opened via /peer open get their configured surfaces.
@@ -240,10 +260,13 @@ export default function (pi: any) {
     }
 
     // Coordinator append content (APPEND_SYSTEM + peers/coordinator parts).
-    if (role === "coordinator") {
-      if (!out.includes(GHOSTY_PROMPT_MARKER) && coordinatorPromptAppend) {
-        out = [out.trimEnd(), "", GHOSTY_PROMPT_MARKER, "", coordinatorPromptAppend].join("\n");
-      }
+    // We want this close to the top (right after the first paragraph), not at the end.
+    if (role === "coordinator" && coordinatorInsertBlock) {
+      // Normalize: strip any legacy duplicated inserts (with or without marker), then re-insert once.
+      out = removeAll(out, GHOSTY_PROMPT_MARKER);
+      out = removeAll(out, sharedAppendText);
+      out = removeAll(out, coordinatorPartsText);
+      out = insertAfterFirstParagraph(out, coordinatorInsertBlock);
     }
 
     return out;
