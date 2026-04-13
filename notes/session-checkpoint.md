@@ -19,8 +19,9 @@
 - Working tree also includes docs/example updates for the dual-config split:
   - `.env.example`, `README.md`, `pi-agent-frontier.json`, `pi-agent-local.json`, `src/config/loadConfig.ts`, `src/config/schema.ts`.
 - Validation previously passed with frontier config: `npm run typecheck` and `npm run smoke:pi-ext`.
-- Follow-up stabilization in progress: extension-side sampling/extraBody wiring is now being ported from runtime code so `pi-agent-local.json` works for extension-launched sessions too.
-- One subtle compatibility issue was found and fixed during that port: OpenAI Codex / responses sessions reject runtime-style `temperature`, so extension sampling patches now apply only to `openai-completions` / vLLM-style models.
+- Follow-up stabilization direction changed: dual-config is now enforced as a hard split, not a gated mixed-mode path.
+- `pi-agent-local.json` remains the runtime/local-model config (sampling + extraBody allowed there).
+- Ghosty Pi extension now hard-requires frontier config semantics and rejects `pi-agent-local.json` / runtime-only fields at load time instead of trying to gate behavior by provider.
 - One small hardening tweak was added after review: the footer status code now tolerates missing `ctx.ui.theme`.
 
 # Decisions
@@ -35,15 +36,13 @@
 - Need real-world verification that:
   - plain `pi` from repo root stays vanilla after resume/reload,
   - explicit ghosty launch still works for coordinator and spawned peers,
-  - scoped-model filtering behaves correctly with dual-config setups,
-  - extension-side sampling behaves correctly on actual vLLM/openai-completions models when using `pi-agent-local.json`.
-- Still need a gap review of what runtime features remain missing from the extension path beyond sampling/extraBody.
+  - scoped-model filtering behaves correctly with dual-config setups.
+- Still need a gap review of what runtime features remain missing from the extension path, but sampling/extraBody are intentionally runtime-only now.
 
 # Resume Instructions
-1. Read this file first, then inspect `git diff -- .pi/extensions/ghosty/index.ts src/extensions/samplingExtension.ts src/config/schema.ts`.
-2. Validate extension sampling behavior:
-   - `GHOSTY_AGENT_CONFIG_PATH=./pi-agent-local.json npm run smoke:pi-ext` should pass;
-   - verify sampling patches are skipped for non-`openai-completions` providers like OpenAI Codex;
-   - verify they are applied for actual vLLM/openai-completions models.
-3. Continue the runtime-vs-extension parity review and note the next missing features after sampling/extraBody.
+1. Read this file first, then inspect `git diff -- src/config/loadConfig.ts src/config/schema.ts .pi/extensions/ghosty/index.ts scripts/smoke-pi-extension.mjs`.
+2. Validate dual-config hard split:
+   - `npm run smoke:pi-ext` should pass with frontier config;
+   - `GHOSTY_AGENT_CONFIG_PATH=./pi-agent-local.json npm run smoke:pi-ext` should fail immediately with a clear config error.
+3. Continue the runtime-vs-extension parity review for features that should exist in the extension path without collapsing the dual-config boundary.
 4. Then return to manual plain-`pi` vs explicit-ghosty activation verification if still needed.

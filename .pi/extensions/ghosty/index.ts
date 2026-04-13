@@ -28,7 +28,6 @@ import { Semaphore } from "../../../src/runtime/concurrency.js";
 import { SessionCatalogStore, type CatalogEntry } from "../../../src/runtime/sessionCatalogStore.js";
 import { formatSessionName } from "../../../src/runtime/sessionNaming.js";
 import { roleSystemPromptExtensionFactory } from "../../../src/extensions/roleSystemPromptExtension.js";
-import { samplingExtensionFactory } from "../../../src/extensions/samplingExtension.js";
 
 const GHOSTY_PROMPT_MARKER = "GHOSTY_PROMPT_MARKER_v1";
 
@@ -162,13 +161,6 @@ export default function (pi: any) {
   const config = loadExtensionConfigFromFile(resolvedConfigPath);
   const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty-pi");
   const appendSystemPath = resolve(projectDir, ".pi", "APPEND_SYSTEM.md");
-
-  samplingExtensionFactory(config, "coordinator", {
-    runDir,
-    sessionId: "coordinator",
-    projectTag: config.defaults.projectTag,
-    traceSampling: false,
-  })(pi);
 
   const maxParallelDelegations = config.defaults.routing?.maxParallelDelegations ?? 2;
   const delegationSemaphore = new Semaphore(maxParallelDelegations);
@@ -715,15 +707,7 @@ export default function (pi: any) {
       resourceLoaderOptions: {
         // Avoid auto-loading extensions from cwd. We only need our role system prompt shaper here.
         noExtensions: true,
-        extensionFactories: [
-          samplingExtensionFactory(config, parsed.peerName, {
-            runDir,
-            sessionId: peerSessionId,
-            projectTag: config.defaults.projectTag,
-            traceSampling: false,
-          }),
-          roleSystemPromptExtensionFactory(parsed.peerName),
-        ],
+        extensionFactories: [roleSystemPromptExtensionFactory(parsed.peerName)],
 
         // Disable AGENTS.md/CLAUDE.md context-file crawling for peers.
         agentsFilesOverride: (_current) => ({ agentsFiles: [] }),
