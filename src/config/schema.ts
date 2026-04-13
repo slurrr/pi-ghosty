@@ -30,6 +30,12 @@ export const agentConfigSchema = z.object({
   extra_body: z.record(z.string(), z.any()).optional(),
 });
 
+export const extensionAgentConfigSchema = z.object({
+  tools: z.array(z.string()).default([]),
+  thinkingLevel: thinkingLevelSchema.default("off"),
+  defaultModel: z.string().min(1).optional(),
+});
+
 const routingSchema = z.object({
   maxParallelDelegations: z.number().int().positive().default(2),
   maxNumSeqHint: z.number().int().positive().default(4),
@@ -92,5 +98,27 @@ export const ghostyConfigSchema = z.object({
   agents: z.record(z.string(), agentConfigSchema),
 });
 
+export const ghostyExtensionConfigSchema = z.object({
+  defaults: z.object({
+    projectTag: z.string().min(1),
+    routing: routingSchema.optional().default({
+      maxParallelDelegations: 2,
+      maxNumSeqHint: 4,
+      maxLoadedSessionsTotal: 8,
+      maxLoadedSessionsPerPeer: 4,
+      compactThresholdPercent: 75,
+      retireAfterCompactions: 5,
+      semantic: {
+        enabled: true,
+        updateCooldownMs: 3600000,
+        maxCandidates: 8,
+        model: "default",
+      },
+    }),
+  }),
+  agents: z.record(z.string(), extensionAgentConfigSchema),
+});
+
 export type GhostyConfig = z.infer<typeof ghostyConfigSchema>;
 export type AgentConfig = z.infer<typeof agentConfigSchema>;
+export type GhostyExtensionConfig = z.infer<typeof ghostyExtensionConfigSchema>;

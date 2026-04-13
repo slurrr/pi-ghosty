@@ -8,14 +8,14 @@ const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs
 const extPath = resolve(process.cwd(), ".pi", "extensions", "ghosty", "index.ts");
 const sessionDir = resolve(runDir, "data", "sessions", "coordinator");
 const model = process.env.GHOSTY_PI_SMOKE_MODEL || "openai-codex/gpt-5.3-codex";
-const configPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim() || resolve(process.cwd(), "pi-agent.json");
+const configPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim() || resolve(process.cwd(), "pi-agent-frontier.json");
 
 const res = spawnSync(
   "pi",
   ["-p", "--session-dir", sessionDir, "-e", extPath, "--model", model, "/ghosty smoke"],
   {
     encoding: "utf8",
-    env: { ...process.env, GHOSTY_AGENT_CONFIG_PATH: configPath },
+    env: { ...process.env, GHOSTY_AGENT_CONFIG_PATH: configPath, GHOSTY_EXTENSION_ACTIVE: "1" },
   },
 );
 

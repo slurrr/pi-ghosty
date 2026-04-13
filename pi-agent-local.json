@@ -1,0 +1,96 @@
+{
+  "defaults": {
+    "vllmBaseUrl": "http://localhost:8002/v1",
+    "hindsightBaseUrl": "http://localhost:8888",
+    "hindsightBankId": "pi-ghosty",
+    "projectTag": "project:pi-ghosty",
+    "model": {
+      "contextWindow": 131072,
+      "maxTokens": 8192
+    },
+    "sampling": {
+      "temperature": 0.6,
+      "topP": 0.95,
+      "topK": 20,
+      "minP": 0.05,
+      "repetitionPenalty": 1.0,
+      "presencePenalty": null,
+      "frequencyPenalty": null
+    },
+    "routing": {
+      "maxParallelDelegations": 2,
+      "maxNumSeqHint": 4,
+      "maxLoadedSessionsTotal": 8,
+      "maxLoadedSessionsPerPeer": 4,
+      "compactThresholdPercent": 75,
+      "retireAfterCompactions": 5,
+      "semantic": {
+        "enabled": true,
+        "updateCooldownMs": 3600000,
+        "maxCandidates": 8,
+        "model": "default"
+      }
+    }
+  },
+  "agents": {
+    "coordinator": {
+      "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch"],
+      "thinkingLevel": "off",
+      "sampling": {
+        "temperature": 1.1,
+        "topP": 1.0,
+        "topK": -1,
+        "minP": 0.05,
+        "presencePenalty": 0.9
+      },
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      }
+    },
+    "coder": {
+      "tools": ["read", "grep", "find", "ls", "edit", "write", "bash"],
+      "thinkingLevel": "off",
+      "sampling": {
+        "temperature": 0.6,
+        "topP": 0.95,
+        "topK": -1,
+        "minP": 0.05
+      }
+    },
+    "researcher": {
+      "tools": ["read", "grep", "find", "ls"],
+      "thinkingLevel": "off",
+      "sampling": {
+        "temperature": 0.6,
+        "topP": 0.95,
+        "topK": -1,
+        "minP": 0.05,
+        "repetitionPenalty": 1.0
+      }
+    },
+    "reviewer": {
+      "tools": ["read", "grep", "find", "ls"],
+      "thinkingLevel": "off",
+      "sampling": {
+        "temperature": 0.6,
+        "topP": 0.95,
+        "topK": -1,
+        "minP": 0.05,
+        "repetitionPenalty": 1.0
+      }
+    },
+    "memory": {
+      "tools": ["read", "grep", "find", "ls"],
+      "thinkingLevel": "off",
+      "sampling": {
+        "temperature": 0.6,
+        "topP": 1.0,
+        "topK": -1,
+        "minP": 0.05,
+        "repetitionPenalty": 1.0
+      }
+    }
+  }
+}

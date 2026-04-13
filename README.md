@@ -32,9 +32,12 @@ Useful flags:
 - `GHOSTY_DEBUG_TOOL_BLOCKS=1`: trace tool blocks (policy + gating)
 - `GHOSTY_DEBUG_TOOL_SURFACE=1`: log allowed tool surface once per session
 - `GHOSTY_DEBUG_PROMPT_PARTS=1`: log which peer prompt part files were loaded (hashes)
+- `GHOSTY_AGENT_CONFIG_PATH=./pi-agent-frontier.json`: optional config override for ghosty Pi extension launches; defaults to `./pi-agent-frontier.json`
 
 ## Notes
-- Config lives in `pi-agent.json`.
+- Local runtime config lives in `pi-agent-local.json` (full shape: model, sampling, memory, tool surfaces).
+- Ghosty Pi extension config lives in `pi-agent-frontier.json` (frontier shape: tool surfaces, routing, and other extension-only fields).
+- `pi-agent.json` remains as a legacy compatibility file while this branch finishes the dual-config migration.
 - Shared system prompt addendum is `.pi/APPEND_SYSTEM.md` (pi default system prompt is used).
 - Peer prompt parts live in `peers/<peer>/*.md` (all `.md` in that folder are appended in lexicographic order).
 - Interface is pi TUI (primary). For Telegram, use the upstream `pi-telegram` extension (see `docs/decisions/0005-telegram-via-pi-telegram.md`).

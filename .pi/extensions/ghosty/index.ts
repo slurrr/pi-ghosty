@@ -13,7 +13,7 @@ import {
 import { completeSimple } from "@mariozechner/pi-ai";
 import type { Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
-import { loadConfigFromFile } from "../../../src/config/loadConfig.js";
+import { loadExtensionConfigFromFile } from "../../../src/config/loadConfig.js";
 import { loadPeerPromptParts } from "../../../src/prompts/loadPeerPromptParts.js";
 import {
   buildPeerDelegationPrompt,
@@ -35,6 +35,23 @@ function getProjectDirFromImportMetaUrl(metaUrl: string): string {
   const extensionDir = dirname(fileURLToPath(metaUrl));
   // <repo>/.pi/extensions/ghosty
   return resolve(extensionDir, "..", "..", "..");
+}
+
+function isGhostyExtensionExplicitlyRequested(metaUrl: string): boolean {
+  if (process.env.GHOSTY_EXTENSION_ACTIVE === "1") return true;
+
+  const extensionPath = fileURLToPath(metaUrl);
+  const argv = process.argv.slice(2);
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg !== "-e" && arg !== "--extension") continue;
+    const candidate = argv[i + 1];
+    if (!candidate) continue;
+    if (resolve(process.cwd(), candidate) === extensionPath) return true;
+  }
+
+  return false;
 }
 
 function lastAssistantText(messages: any[]): string {
@@ -134,14 +151,14 @@ function stripProjectContext(systemPrompt: string): string {
 }
 
 export default function (pi: any) {
-  const projectDir = getProjectDirFromImportMetaUrl(import.meta.url);
-  const rawConfigPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim();
-  if (!rawConfigPath) {
-    throw new Error("Set GHOSTY_AGENT_CONFIG_PATH to a ghosty config file (e.g. ./pi-agent.frontier.json)");
+  if (!isGhostyExtensionExplicitlyRequested(import.meta.url)) {
+    return;
   }
 
+  const projectDir = getProjectDirFromImportMetaUrl(import.meta.url);
+  const rawConfigPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim() || "./pi-agent-frontier.json";
   const resolvedConfigPath = resolve(projectDir, rawConfigPath);
-  const config = loadConfigFromFile(resolvedConfigPath);
+  const config = loadExtensionConfigFromFile(resolvedConfigPath);
   const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty-pi");
   const appendSystemPath = resolve(projectDir, ".pi", "APPEND_SYSTEM.md");
 
@@ -218,6 +235,8 @@ export default function (pi: any) {
     const role = inferRoleFromSessionFile(ctx?.sessionManager?.getSessionFile?.());
     activeRole = role;
     applyToolSurface(role);
+    const ghostyStatus = ctx.ui?.theme?.fg?.("accent", "ghosty: active") ?? "ghosty: active";
+    ctx.ui?.setStatus?.("ghosty", ghostyStatus);
   });
 
   function computeGhostySystemPrompt(systemPrompt: string, role: string): string {
@@ -843,11 +862,16 @@ export default function (pi: any) {
       if (subcommand === "status") {
         await catalogLoaded;
         const counts = catalogStore.countByPeer();
+        const modelScope = await getAllowedModels(ctx);
+        const enabledPatternsText = modelScope.patterns.length > 0 ? modelScope.patterns.join(", ") : "none";
 
         const lines = [
           "ghosty status",
           `runDir: ${runDir}`,
           `projectTag: ${config.defaults.projectTag}`,
+          `configPath: ${resolvedConfigPath}`,
+          `enabledModels: ${enabledPatternsText}`,
+          `allowedModels: ${modelScope.allowed.length}`,
           `catalog: coder=${counts.coder}, researcher=${counts.researcher}, reviewer=${counts.reviewer}, memory=${counts.memory}`,
           "peer session dirs:",
         ];
@@ -984,6 +1008,7 @@ export default function (pi: any) {
       // We pass -e <this extension> so the same tools/commands are available.
       const extPath = fileURLToPath(import.meta.url);
       const cmd =
+        `GHOSTY_EXTENSION_ACTIVE=1 ` +
         `GHOSTY_PI_RUN_DIR=${shellQuote(runDir)} ` +
         `GHOSTY_AGENT_CONFIG_PATH=${shellQuote(resolvedConfigPath)} ` +
         `pi --session ${shellQuote(sessionPath)} --session-dir ${shellQuote(peerSessionDir)} -e ${shellQuote(extPath)}`;
