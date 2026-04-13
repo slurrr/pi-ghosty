@@ -543,7 +543,7 @@ export default function (pi: any) {
     const { session } = await createAgentSessionFromServices({
       services,
       sessionManager: peerSessionManager,
-      model: ctx.model,
+      // Do not force the coordinator's model; allow peers to keep their own model by default.
       customTools: [createPeerReportTool()],
     });
 
@@ -551,6 +551,30 @@ export default function (pi: any) {
     // The peer_report tool is always enabled for peers.
     const allowedTools = (config.agents?.[parsed.peerName]?.tools ?? []) as string[];
     session.setActiveToolsByName([...allowedTools, "peer_report"]);
+
+    // Per-delegation model selection:
+    // - If request.model provided, force that model.
+    // - Else if this is a new session and coordinator has a model, use coordinator's model.
+    const requestedModel = String((parsed as any).model ?? "").trim();
+    const shouldDefaultToCoordinator = sessionState === "new" && !!ctx.model;
+    const desiredModelSpec = requestedModel || (shouldDefaultToCoordinator ? `${ctx.model.provider}/${ctx.model.id}` : "");
+
+    if (desiredModelSpec) {
+      const [prov, id] = desiredModelSpec.includes("/")
+        ? desiredModelSpec.split("/", 2)
+        : [ctx.model?.provider ?? "", desiredModelSpec];
+
+      if (prov && id) {
+        const model = ctx.modelRegistry.find(prov, id);
+        if (!model) {
+          throw new Error(`Unknown model: ${desiredModelSpec}. Use /model to see available models.`);
+        }
+        // Switch only if needed.
+        if (!session.model || session.model.provider !== model.provider || session.model.id !== model.id) {
+          await session.setModel(model);
+        }
+      }
+    }
 
     const prompt = buildPeerDelegationPrompt(parsed, {
       projectTag: config.defaults.projectTag,
@@ -803,6 +827,7 @@ export default function (pi: any) {
         task: Type.String({ minLength: 1 }),
         context: Type.Optional(Type.String()),
         expectedOutput: Type.Optional(Type.String()),
+        model: Type.Optional(Type.String({ minLength: 1 })),
       }),
       execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
         const result = await delegateOnceBounded(params, ctx);
@@ -831,6 +856,7 @@ export default function (pi: any) {
             task: Type.String({ minLength: 1 }),
             context: Type.Optional(Type.String()),
             expectedOutput: Type.Optional(Type.String()),
+            model: Type.Optional(Type.String({ minLength: 1 })),
           }),
           { minItems: 1 },
         ),

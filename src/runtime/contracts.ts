@@ -7,6 +7,10 @@ export const delegateRequestSchema = z.object({
   task: z.string().min(1),
   context: z.string().default(""),
   expectedOutput: z.string().default(""),
+
+  // Optional model override for this delegation.
+  // Format: "provider/modelId" (preferred) or "modelId" (uses current provider).
+  model: z.string().min(1).optional(),
 });
 
 export const delegateBatchRequestSchema = z.object({
@@ -47,6 +51,7 @@ export function buildPeerDelegationPrompt(request: DelegateRequest, meta: { proj
     `Coordinator session: ${meta.coordinatorSessionId}`,
     `Peer session: ${meta.peerSessionId}`,
     `Peer session state: ${meta.sessionState}`,
+    ...(request.model ? [`Preferred model: ${request.model}`] : []),
     "",
     "# Task",
     request.task.trim(),
