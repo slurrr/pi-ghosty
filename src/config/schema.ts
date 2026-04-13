@@ -4,7 +4,7 @@ const thinkingLevelSchema = z.enum(["off", "minimal", "low", "medium", "high", "
 
 const penaltySchema = z.union([z.number().min(-2).max(2), z.null()]);
 
-const samplingSchema = z.object({
+export const samplingSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   topP: z.number().gt(0).max(1).optional(),
   topK: z.union([z.literal(-1), z.number().int().min(1), z.null()]).optional(),
@@ -33,7 +33,10 @@ export const agentConfigSchema = z.object({
 export const extensionAgentConfigSchema = z.object({
   tools: z.array(z.string()).default([]),
   thinkingLevel: thinkingLevelSchema.default("off"),
+  sampling: samplingSchema.optional(),
   defaultModel: z.string().min(1).optional(),
+  extraBody: z.record(z.string(), z.any()).optional(),
+  extra_body: z.record(z.string(), z.any()).optional(),
 });
 
 const routingSchema = z.object({
@@ -101,6 +104,7 @@ export const ghostyConfigSchema = z.object({
 export const ghostyExtensionConfigSchema = z.object({
   defaults: z.object({
     projectTag: z.string().min(1),
+    sampling: samplingSchema.optional(),
     routing: routingSchema.optional().default({
       maxParallelDelegations: 2,
       maxNumSeqHint: 4,
@@ -122,3 +126,4 @@ export const ghostyExtensionConfigSchema = z.object({
 export type GhostyConfig = z.infer<typeof ghostyConfigSchema>;
 export type AgentConfig = z.infer<typeof agentConfigSchema>;
 export type GhostyExtensionConfig = z.infer<typeof ghostyExtensionConfigSchema>;
+export type SamplingConfig = z.infer<typeof samplingSchema>;

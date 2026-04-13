@@ -18,7 +18,9 @@
   - status output now shows config path plus scoped/enabled model info.
 - Working tree also includes docs/example updates for the dual-config split:
   - `.env.example`, `README.md`, `pi-agent-frontier.json`, `pi-agent-local.json`, `src/config/loadConfig.ts`, `src/config/schema.ts`.
-- Validation: `npm run typecheck` and `npm run smoke:pi-ext` both pass.
+- Validation previously passed with frontier config: `npm run typecheck` and `npm run smoke:pi-ext`.
+- Follow-up stabilization in progress: extension-side sampling/extraBody wiring is now being ported from runtime code so `pi-agent-local.json` works for extension-launched sessions too.
+- One subtle compatibility issue was found and fixed during that port: OpenAI Codex / responses sessions reject runtime-style `temperature`, so extension sampling patches now apply only to `openai-completions` / vLLM-style models.
 - One small hardening tweak was added after review: the footer status code now tolerates missing `ctx.ui.theme`.
 
 # Decisions
@@ -33,14 +35,15 @@
 - Need real-world verification that:
   - plain `pi` from repo root stays vanilla after resume/reload,
   - explicit ghosty launch still works for coordinator and spawned peers,
-  - scoped-model filtering behaves correctly with dual-config setups.
-- Recovery changes are still unstaged/uncommitted.
+  - scoped-model filtering behaves correctly with dual-config setups,
+  - extension-side sampling behaves correctly on actual vLLM/openai-completions models when using `pi-agent-local.json`.
+- Still need a gap review of what runtime features remain missing from the extension path beyond sampling/extraBody.
 
 # Resume Instructions
-1. Read this file first, then inspect `git diff -- .pi/extensions/ghosty/index.ts scripts/smoke-pi-extension.mjs`.
-2. Validate behavior manually:
-   - run plain `pi` from repo root and confirm no `/ghosty`, `/peer`, or `ghosty: active`;
-   - run `pi -e .pi/extensions/ghosty/index.ts --model openai-codex/gpt-5.3-codex` with the intended config env and confirm `ghosty: active` plus coordinator tool restrictions;
-   - resume/reload both sessions if possible to try to reproduce the original contamination path.
-3. If behavior holds, commit the recovery fix on top of `66ac8b3`.
-4. If contamination still happens, inspect Pi’s extension auto-discovery/resume behavior upstream before touching ghosty routing/model logic.
+1. Read this file first, then inspect `git diff -- .pi/extensions/ghosty/index.ts src/extensions/samplingExtension.ts src/config/schema.ts`.
+2. Validate extension sampling behavior:
+   - `GHOSTY_AGENT_CONFIG_PATH=./pi-agent-local.json npm run smoke:pi-ext` should pass;
+   - verify sampling patches are skipped for non-`openai-completions` providers like OpenAI Codex;
+   - verify they are applied for actual vLLM/openai-completions models.
+3. Continue the runtime-vs-extension parity review and note the next missing features after sampling/extraBody.
+4. Then return to manual plain-`pi` vs explicit-ghosty activation verification if still needed.

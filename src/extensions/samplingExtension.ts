@@ -1,19 +1,19 @@
 import type { ExtensionFactory } from "@mariozechner/pi-coding-agent";
-import type { GhostyConfig } from "../config/schema.js";
+import type { GhostyConfig, GhostyExtensionConfig, SamplingConfig } from "../config/schema.js";
 import { JsonlTrace } from "../logging/jsonlTrace.js";
 
-type SamplingConfig = NonNullable<GhostyConfig["defaults"]["sampling"]>;
-
+type GhostySamplingConfig = Pick<GhostyConfig, "defaults" | "agents"> | Pick<GhostyExtensionConfig, "defaults" | "agents">;
+type ResolvedSamplingConfig = Partial<SamplingConfig>;
 type ExtraBody = Record<string, unknown>;
 
-function resolveSampling(config: GhostyConfig, agentName: string): SamplingConfig {
+function resolveSampling(config: GhostySamplingConfig, agentName: string): ResolvedSamplingConfig {
   return {
     ...(config.defaults.sampling ?? {}),
     ...(config.agents[agentName]?.sampling ?? {}),
   };
 }
 
-function resolveExtraBody(config: GhostyConfig, agentName: string): ExtraBody | undefined {
+function resolveExtraBody(config: GhostySamplingConfig, agentName: string): ExtraBody | undefined {
   const agent = config.agents[agentName] as any;
   return (agent?.extraBody ?? agent?.extra_body) as ExtraBody | undefined;
 }
@@ -38,8 +38,14 @@ function applyIfMissing(payload: Record<string, unknown>, key: string, value: un
   payload[key] = value;
 }
 
+function supportsSamplingOverrides(ctx: any): boolean {
+  const api = String(ctx?.model?.api || "").trim().toLowerCase();
+  const provider = String(ctx?.model?.provider || "").trim().toLowerCase();
+  return api === "openai-completions" || provider === "vllm";
+}
+
 export function samplingExtensionFactory(
-  config: GhostyConfig,
+  config: GhostySamplingConfig,
   agentName: string,
   debug: { runDir: string; sessionId: string; projectTag: string; traceSampling?: boolean },
 ): ExtensionFactory {
@@ -53,7 +59,7 @@ export function samplingExtensionFactory(
     let logged = false;
     let loggedPatch = false;
 
-    pi.on("before_provider_request", async (event) => {
+    pi.on("before_provider_request", async (event, ctx) => {
       if (trace && !logged) {
         logged = true;
         await trace.append({
@@ -67,6 +73,7 @@ export function samplingExtensionFactory(
       }
 
       if (!hasSampling && !hasExtraBody) return undefined;
+      if (!supportsSamplingOverrides(ctx)) return undefined;
       if (!event.payload || typeof event.payload !== "object" || Array.isArray(event.payload)) return undefined;
 
       const payload = { ...(event.payload as Record<string, unknown>) };
