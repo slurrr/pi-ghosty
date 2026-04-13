@@ -12,7 +12,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "kill": "node scripts/ghosty-kill.mjs"
+    "kill": "node scripts/ghosty-kill.mjs",
+    "smoke:pi-ext": "node scripts/smoke-pi-extension.mjs"
   },
   "keywords": [],
   "author": "",
