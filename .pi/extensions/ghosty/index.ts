@@ -102,6 +102,35 @@ function replaceFirstParagraph(systemPrompt: string, replacement: string): strin
   return `${replacement}\n\n${rest}`;
 }
 
+function stripProjectContext(systemPrompt: string): string {
+  // Pi injects AGENTS.md/CLAUDE.md/etc. as a "Project Context" section by crawling up directories.
+  // For ghosty (personal agent), we deliberately disable this entire injected section.
+  const startMarker = "\n# Project Context\n";
+  const start = systemPrompt.indexOf(startMarker);
+  if (start < 0) return systemPrompt;
+
+  // Keep skills listing and the rest of pi's system prompt.
+  const endCandidates = [
+    "\n\nThe following skills provide specialized instructions",
+    "\n\n<available_skills>",
+    "\n\nCurrent date:",
+  ];
+
+  let end = -1;
+  for (const m of endCandidates) {
+    const idx = systemPrompt.indexOf(m, start + startMarker.length);
+    if (idx >= 0) {
+      end = idx;
+      break;
+    }
+  }
+
+  // If we can't find the end marker, strip to the end.
+  if (end < 0) end = systemPrompt.length;
+
+  return (systemPrompt.slice(0, start) + systemPrompt.slice(end)).trimEnd();
+}
+
 export default function (pi: any) {
   const projectDir = getProjectDirFromImportMetaUrl(import.meta.url);
   const config = loadConfig(projectDir);
@@ -164,7 +193,7 @@ export default function (pi: any) {
   });
 
   function computeGhostySystemPrompt(systemPrompt: string, role: string): string {
-    let out = systemPrompt;
+    let out = stripProjectContext(systemPrompt);
 
     // First paragraph rewriting for non-coder roles.
     if (role !== "coder") {
@@ -474,6 +503,9 @@ export default function (pi: any) {
         // Avoid auto-loading extensions from cwd. We only need our role system prompt shaper here.
         noExtensions: true,
         extensionFactories: [roleSystemPromptExtensionFactory(parsed.peerName)],
+
+        // Disable AGENTS.md/CLAUDE.md context-file crawling for peers.
+        agentsFilesOverride: (_current) => ({ agentsFiles: [] }),
 
         appendSystemPrompt: resolve(projectDir, ".pi", "APPEND_SYSTEM.md"),
         additionalSkillPaths: [resolve(projectDir, ".pi", "skills")],
