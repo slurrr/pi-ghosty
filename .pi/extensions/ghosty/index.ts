@@ -9,6 +9,7 @@ import {
   createAgentSessionServices,
   defineTool,
 } from "@mariozechner/pi-coding-agent";
+import { completeSimple } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { loadConfig } from "../../../src/config/loadConfig.js";
 import { loadPeerPromptParts } from "../../../src/prompts/loadPeerPromptParts.js";
@@ -21,7 +22,8 @@ import {
 } from "../../../src/runtime/contracts.js";
 import { createPeerReportTool } from "../../../src/runtime/peerReportTool.js";
 import { Semaphore } from "../../../src/runtime/concurrency.js";
-import { SessionCatalogStore } from "../../../src/runtime/sessionCatalogStore.js";
+import { SessionCatalogStore, type CatalogEntry } from "../../../src/runtime/sessionCatalogStore.js";
+import { formatSessionName } from "../../../src/runtime/sessionNaming.js";
 
 function getProjectDirFromImportMetaUrl(metaUrl: string): string {
   const extensionDir = dirname(fileURLToPath(metaUrl));
@@ -59,6 +61,25 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
+function extractJsonObject(text: string): string | undefined {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = (fenced?.[1] ?? trimmed).trim();
+  const first = candidate.indexOf("{");
+  const last = candidate.lastIndexOf("}");
+  if (first === -1 || last === -1 || last <= first) return undefined;
+  return candidate.slice(first, last + 1);
+}
+
+function safeJsonParse<T>(text: string): T | undefined {
+  const extracted = extractJsonObject(text) ?? text;
+  try {
+    return JSON.parse(extracted) as T;
+  } catch {
+    return undefined;
+  }
+}
+
 export default function (pi: any) {
   const projectDir = getProjectDirFromImportMetaUrl(import.meta.url);
   const config = loadConfig(projectDir);
@@ -69,6 +90,112 @@ export default function (pi: any) {
 
   const catalogStore = new SessionCatalogStore(runDir, config.defaults.projectTag);
   const catalogLoaded = catalogStore.load();
+
+  async function askJson(prompt: string, ctx: any): Promise<string> {
+    if (!ctx.model) throw new Error("No model selected.");
+
+    const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model);
+    if (!auth?.apiKey) throw new Error(`No API key available for provider ${ctx.model.provider}. Run /login ${ctx.model.provider}.`);
+
+    const ac = new AbortController();
+    const timeoutMs = 30000;
+    const t = setTimeout(() => ac.abort(new Error(`router timeout after ${timeoutMs}ms`)), timeoutMs);
+
+    try {
+      const res = await completeSimple(
+        ctx.model,
+        {
+          systemPrompt: "Return strict JSON only.",
+          messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
+        },
+        {
+          apiKey: auth.apiKey,
+          headers: auth.headers,
+          temperature: 0,
+          maxTokens: 256,
+          signal: ac.signal,
+        },
+      );
+
+      if (res.stopReason === "error") throw new Error(res.errorMessage || "router error");
+      return res.content
+        .filter((b: any) => b.type === "text" && typeof b.text === "string")
+        .map((b: any) => b.text)
+        .join("")
+        .trim();
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  async function maybeEnrichSemantic(entry: CatalogEntry, request: any, reportSummary: string, ctx: any): Promise<CatalogEntry> {
+    const cooldownMs = config.defaults.routing?.semantic?.updateCooldownMs ?? 3600000;
+    const last = Date.parse(entry.semantic?.updatedAt ?? "");
+    const now = Date.now();
+
+    const hasSemantic = !!entry.semantic?.title && !!entry.semantic?.summary && Array.isArray(entry.semantic?.tags);
+    const timeStale = !Number.isFinite(last) || now - last > cooldownMs;
+
+    if (hasSemantic && !timeStale) return entry;
+
+    const prompt = [
+      "Return strict JSON only.",
+      "You are enriching a session catalog entry for routing.",
+      "Output schema: {\"title\":string,\"summary\":string,\"tags\":string[]}",
+      "",
+      `peerName: ${entry.peerName}`,
+      `projectTag: ${config.defaults.projectTag}`,
+      `cwd: ${entry.cwd}`,
+      `task: ${request.task}`,
+      `context: ${request.context || ""}`,
+      `expectedOutput: ${request.expectedOutput || ""}`,
+      `peerReportSummary: ${reportSummary || ""}`,
+    ].join("\n");
+
+    const raw = await askJson(prompt, ctx);
+    const parsed = safeJsonParse<{ title?: string; summary?: string; tags?: string[] }>(raw);
+
+    if (!parsed?.title || !parsed?.summary || !Array.isArray(parsed.tags)) {
+      // Fallback semantic (still update updatedAt so we don't hammer the LLM).
+      const task = String(request.task || "").trim().split("\n")[0] || `${entry.peerName} session`;
+      const fallback: CatalogEntry["semantic"] = {
+        title: task.slice(0, 120),
+        summary: (reportSummary || String(request.context || "") || task).trim().slice(0, 1000),
+        tags: [entry.peerName, "fallback"],
+        updatedAt: new Date().toISOString(),
+        source: "llm",
+        confidence: "low",
+        basis: {
+          messageCount: entry.stats?.messageCount,
+          toolCalls: entry.stats?.toolCalls,
+          compactions: entry.stats?.compactions,
+          lastUsedAt: entry.lastUsedAt,
+        },
+      };
+      const updated = { ...entry, semantic: fallback };
+      await catalogStore.upsert(entry.peerName, updated);
+      return updated;
+    }
+
+    const semantic: CatalogEntry["semantic"] = {
+      title: String(parsed.title).trim().slice(0, 120),
+      summary: String(parsed.summary).trim().slice(0, 1000),
+      tags: parsed.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 12),
+      updatedAt: new Date().toISOString(),
+      source: "llm",
+      confidence: "normal",
+      basis: {
+        messageCount: entry.stats?.messageCount,
+        toolCalls: entry.stats?.toolCalls,
+        compactions: entry.stats?.compactions,
+        lastUsedAt: entry.lastUsedAt,
+      },
+    };
+
+    const updated = { ...entry, semantic };
+    await catalogStore.upsert(entry.peerName, updated);
+    return updated;
+  }
 
   async function delegateOnce(request: any, ctx: any) {
     if (!ctx.model) {
@@ -91,12 +218,14 @@ export default function (pi: any) {
     const now = new Date().toISOString();
     const sessionFile = peerSessionManager.getSessionFile() ?? "";
     const existing = catalogStore.getEntry(parsed.peerName as any, peerSessionId);
+
+    let entry: CatalogEntry;
     if (!existing) {
       const entries = peerSessionManager.getEntries();
       const messageCount = entries.filter((e: any) => e.type === "message").length;
       const compactions = entries.filter((e: any) => e.type === "compaction").length;
 
-      await catalogStore.upsert(parsed.peerName as any, {
+      entry = {
         peerName: parsed.peerName,
         sessionId: peerSessionId,
         sessionFile,
@@ -121,13 +250,14 @@ export default function (pi: any) {
             lastUsedAt: now,
           },
         },
-      });
+      };
+      await catalogStore.upsert(parsed.peerName as any, entry);
     } else {
-      await catalogStore.patch(parsed.peerName as any, peerSessionId, {
+      entry = (await catalogStore.patch(parsed.peerName as any, peerSessionId, {
         lastUsedAt: now,
         sessionFile,
         sessionName: peerSessionManager.getSessionName() ?? existing.sessionName,
-      });
+      })) as CatalogEntry;
     }
 
     const peerParts = loadPeerPromptParts(projectDir, parsed.peerName);
@@ -175,6 +305,37 @@ export default function (pi: any) {
 
     if (!output) {
       output = { summary: lastAssistantText(session.messages) };
+    }
+
+    // Update stats after the turn and opportunistically enrich semantic info.
+    const allEntries = peerSessionManager.getEntries();
+    const messageCountAfter = allEntries.filter((e: any) => e.type === "message").length;
+    const compactionsAfter = allEntries.filter((e: any) => e.type === "compaction").length;
+    entry = (await catalogStore.patch(parsed.peerName as any, peerSessionId, {
+      lastUsedAt: new Date().toISOString(),
+      stats: {
+        messageCount: messageCountAfter,
+        compactions: compactionsAfter,
+      },
+    })) as CatalogEntry;
+
+    let enriched = entry;
+    try {
+      enriched = await maybeEnrichSemantic(entry, parsed, output.summary, ctx);
+    } catch {
+      enriched = entry;
+    }
+
+    // Always try to set a deterministic session display name.
+    try {
+      const title = enriched.semantic?.title || `${parsed.peerName} session`;
+      const desiredName = formatSessionName(parsed.peerName, title);
+      peerSessionManager.appendSessionInfo(desiredName);
+      await catalogStore.patch(parsed.peerName as any, peerSessionId, {
+        sessionName: desiredName,
+      });
+    } catch {
+      // ignore
     }
 
     return {
