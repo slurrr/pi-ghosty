@@ -19,6 +19,7 @@ import {
   delegateRequestSchema,
   ghostyPeerNames,
   peerOutputSchema,
+  routingDecisionSchema,
 } from "../../../src/runtime/contracts.js";
 import { createPeerReportTool } from "../../../src/runtime/peerReportTool.js";
 import { Semaphore } from "../../../src/runtime/concurrency.js";
@@ -197,6 +198,125 @@ export default function (pi: any) {
     return updated;
   }
 
+  async function routePeerSession(peerName: string, request: any, ctx: any): Promise<{ sessionManager: SessionManager; sessionState: "new" | "resumed" }> {
+    const peerSessionDir = resolve(runDir, "data", "sessions", peerName);
+    mkdirSync(peerSessionDir, { recursive: true });
+
+    // If we have no sessions yet, continueRecent will create one.
+    const infos = await SessionManager.list(ctx.cwd, peerSessionDir);
+    if (infos.length === 0) {
+      return { sessionManager: SessionManager.continueRecent(ctx.cwd, peerSessionDir), sessionState: "new" };
+    }
+
+    // Build routing candidates from catalog if available.
+    await catalogLoaded;
+    const maxCandidates = config.defaults.routing?.semantic?.maxCandidates ?? 8;
+    const candidates = catalogStore
+      .list(peerName as any)
+      .filter((e) => !e.status?.retired)
+      .sort((a, b) => Date.parse(b.lastUsedAt) - Date.parse(a.lastUsedAt))
+      .slice(0, maxCandidates);
+
+    // If we don't have enough catalog data yet, default to most recent session.
+    if (candidates.length <= 1) {
+      const mostRecent = [...infos].sort((a: any, b: any) => +b.modified - +a.modified)[0];
+      return { sessionManager: SessionManager.open(mostRecent.path, peerSessionDir), sessionState: "resumed" };
+    }
+
+    const prompt = [
+      "Return strict JSON only.",
+      "You are routing a delegation request to an existing peer session or creating a new one.",
+      "Output schema: {\"action\":\"resume\"|\"new\", \"sessionId\"?:string, \"reason\"?:string, \"confidence\"?:number }",
+      "",
+      `peerName: ${peerName}`,
+      `projectTag: ${config.defaults.projectTag}`,
+      `task: ${request.task}`,
+      `context: ${request.context || ""}`,
+      "",
+      "Candidates:",
+      ...candidates.map((c) => {
+        const name = c.sessionName || c.semantic?.title || "(unnamed)";
+        const tags = (c.semantic?.tags || []).join(",");
+        return `- sessionId=${c.sessionId} lastUsedAt=${c.lastUsedAt} name=${JSON.stringify(name)} tags=${JSON.stringify(tags)} summary=${JSON.stringify((c.semantic?.summary || "").slice(0, 240))}`;
+      }),
+    ].join("\n");
+
+    try {
+      const raw = await askJson(prompt, ctx);
+      const parsed = safeJsonParse<any>(raw);
+      const decision = routingDecisionSchema.safeParse(parsed);
+
+      if (decision.success && decision.data.action === "resume" && decision.data.sessionId) {
+        const chosen = candidates.find((c) => c.sessionId === decision.data.sessionId);
+        if (chosen?.sessionFile) {
+          return { sessionManager: SessionManager.open(chosen.sessionFile, peerSessionDir), sessionState: "resumed" };
+        }
+      }
+
+      if (decision.success && decision.data.action === "new") {
+        const sm = SessionManager.continueRecent(ctx.cwd, peerSessionDir);
+        sm.newSession();
+        return { sessionManager: sm, sessionState: "new" };
+      }
+    } catch {
+      // ignore and fall back
+    }
+
+    const mostRecent = [...infos].sort((a: any, b: any) => +b.modified - +a.modified)[0];
+    return { sessionManager: SessionManager.open(mostRecent.path, peerSessionDir), sessionState: "resumed" };
+  }
+
+  async function ensureCatalogEntry(peerName: string, peerSessionManager: SessionManager, ctx: any): Promise<CatalogEntry> {
+    await catalogLoaded;
+
+    const peerSessionId = peerSessionManager.getSessionId();
+    const now = new Date().toISOString();
+    const sessionFile = peerSessionManager.getSessionFile() ?? "";
+
+    const existing = catalogStore.getEntry(peerName as any, peerSessionId);
+    if (existing) {
+      return (await catalogStore.patch(peerName as any, peerSessionId, {
+        lastUsedAt: now,
+        sessionFile,
+        sessionName: peerSessionManager.getSessionName() ?? existing.sessionName,
+      })) as CatalogEntry;
+    }
+
+    const entries = peerSessionManager.getEntries();
+    const messageCount = entries.filter((e: any) => e.type === "message").length;
+    const compactions = entries.filter((e: any) => e.type === "compaction").length;
+
+    const entry: CatalogEntry = {
+      peerName: peerName as any,
+      sessionId: peerSessionId,
+      sessionFile,
+      createdAt: now,
+      lastUsedAt: now,
+      cwd: peerSessionManager.getCwd() ?? ctx.cwd,
+      sessionName: peerSessionManager.getSessionName() ?? undefined,
+      stats: {
+        messageCount,
+        compactions,
+      },
+      semantic: {
+        title: `${peerName} session`,
+        summary: "(not yet enriched)",
+        tags: [peerName],
+        updatedAt: new Date(0).toISOString(),
+        source: "llm",
+        confidence: "low",
+        basis: {
+          messageCount,
+          compactions,
+          lastUsedAt: now,
+        },
+      },
+    };
+
+    await catalogStore.upsert(peerName as any, entry);
+    return entry;
+  }
+
   async function delegateOnce(request: any, ctx: any) {
     if (!ctx.model) {
       throw new Error("No model selected. Use /model to choose one, or /login if provider auth is required.");
@@ -205,60 +325,10 @@ export default function (pi: any) {
     const parsed = delegateRequestSchema.parse(request);
 
     const peerSessionDir = resolve(runDir, "data", "sessions", parsed.peerName);
-    mkdirSync(peerSessionDir, { recursive: true });
-
-    const hadExisting = hasPersistedPeerSessions(peerSessionDir);
-    const peerSessionManager = SessionManager.continueRecent(ctx.cwd, peerSessionDir);
-    const sessionState: "new" | "resumed" = hadExisting ? "resumed" : "new";
+    const { sessionManager: peerSessionManager, sessionState } = await routePeerSession(parsed.peerName, parsed, ctx);
     const peerSessionId = peerSessionManager.getSessionId();
 
-    await catalogLoaded;
-
-    // Ensure catalog entry exists / update lastUsedAt.
-    const now = new Date().toISOString();
-    const sessionFile = peerSessionManager.getSessionFile() ?? "";
-    const existing = catalogStore.getEntry(parsed.peerName as any, peerSessionId);
-
-    let entry: CatalogEntry;
-    if (!existing) {
-      const entries = peerSessionManager.getEntries();
-      const messageCount = entries.filter((e: any) => e.type === "message").length;
-      const compactions = entries.filter((e: any) => e.type === "compaction").length;
-
-      entry = {
-        peerName: parsed.peerName,
-        sessionId: peerSessionId,
-        sessionFile,
-        createdAt: now,
-        lastUsedAt: now,
-        cwd: peerSessionManager.getCwd() ?? ctx.cwd,
-        sessionName: peerSessionManager.getSessionName() ?? undefined,
-        stats: {
-          messageCount,
-          compactions,
-        },
-        semantic: {
-          title: `${parsed.peerName} session`,
-          summary: "(not yet enriched)",
-          tags: [parsed.peerName],
-          updatedAt: new Date(0).toISOString(),
-          source: "llm",
-          confidence: "low",
-          basis: {
-            messageCount,
-            compactions,
-            lastUsedAt: now,
-          },
-        },
-      };
-      await catalogStore.upsert(parsed.peerName as any, entry);
-    } else {
-      entry = (await catalogStore.patch(parsed.peerName as any, peerSessionId, {
-        lastUsedAt: now,
-        sessionFile,
-        sessionName: peerSessionManager.getSessionName() ?? existing.sessionName,
-      })) as CatalogEntry;
-    }
+    let entry = await ensureCatalogEntry(parsed.peerName, peerSessionManager, ctx);
 
     const peerParts = loadPeerPromptParts(projectDir, parsed.peerName);
     const services = await createAgentSessionServices({
