@@ -18,6 +18,12 @@ export const agentConfigSchema = z.object({
   tools: z.array(z.string()).default([]),
   thinkingLevel: thinkingLevelSchema.default("off"),
   sampling: samplingSchema.optional(),
+
+  // Provider-specific payload extensions for OpenAI-compatible backends (vLLM).
+  // vLLM supports `extra_body` to pass through non-standard fields.
+  // We accept both camelCase and snake_case for ergonomics.
+  extraBody: z.record(z.string(), z.any()).optional(),
+  extra_body: z.record(z.string(), z.any()).optional(),
 });
 
 const routingSchema = z.object({

@@ -1,4 +1,5 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { ghostyPeerNames } from "./contracts.js";
 
@@ -11,6 +12,10 @@ export interface CatalogEntry {
   createdAt: string;
   lastUsedAt: string;
   cwd: string;
+
+  // Deterministic display name stored in the session file via session_info.
+  // This mirrors SessionManager.getSessionName() when available.
+  sessionName?: string;
   stats?: {
     messageCount?: number;
     toolCalls?: number;
@@ -32,6 +37,14 @@ export interface CatalogEntry {
     updatedAt: string;
     source: "llm";
     confidence?: "normal" | "low";
+
+    // Snapshot used for delta-based semantic refresh decisions.
+    basis?: {
+      messageCount?: number;
+      toolCalls?: number;
+      compactions?: number;
+      lastUsedAt?: string;
+    };
   };
 }
 
@@ -57,6 +70,9 @@ function emptyCatalog(projectTag: string): SessionCatalog {
 export class SessionCatalogStore {
   readonly path: string;
   private catalog: SessionCatalog;
+
+  // Serialize writes to prevent lost updates and tmp rename races under delegate_batch concurrency.
+  private saveChain: Promise<void> = Promise.resolve();
 
   constructor(private readonly runDir: string, private readonly projectTag: string) {
     this.path = resolve(runDir, "data", "session-catalog.json");
@@ -113,8 +129,18 @@ export class SessionCatalogStore {
   }
 
   async save(): Promise<void> {
+    // Chain saves so concurrent calls can't clobber each other.
+    // Ensure the chain continues even if a prior save failed.
+    this.saveChain = this.saveChain.then(
+      () => this.saveOnce(),
+      () => this.saveOnce(),
+    );
+    return this.saveChain;
+  }
+
+  private async saveOnce(): Promise<void> {
     await mkdir(dirname(this.path), { recursive: true });
-    const tmp = `${this.path}.tmp`;
+    const tmp = `${this.path}.${randomUUID()}.tmp`;
     await writeFile(tmp, `${JSON.stringify(this.catalog, null, 2)}\n`, "utf-8");
     await rename(tmp, this.path);
   }

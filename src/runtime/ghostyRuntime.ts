@@ -22,6 +22,7 @@ import { KeyedMutex, Semaphore } from "./concurrency.js";
 import { SessionCatalogStore, type CatalogEntry, type PeerName } from "./sessionCatalogStore.js";
 import { SessionPool } from "./sessionPool.js";
 import { Router } from "./router.js";
+import { formatSessionName } from "./sessionNaming.js";
 
 function lastAssistantText(session: AgentSession): string {
   const messages = session.messages;
@@ -207,6 +208,7 @@ export class GhostyRuntime {
         createdAt: info.created.toISOString(),
         lastUsedAt: info.modified.toISOString(),
         cwd: header?.cwd ?? this.workDir,
+        sessionName: manager.getSessionName() ?? undefined,
         stats: {
           messageCount: info.messageCount,
           contextPercent: null,
@@ -219,6 +221,12 @@ export class GhostyRuntime {
           updatedAt: new Date(0).toISOString(),
           source: "llm",
           confidence: "low",
+          basis: {
+            messageCount: info.messageCount,
+            toolCalls: undefined,
+            compactions,
+            lastUsedAt: info.modified.toISOString(),
+          },
         },
       };
       await this.catalogStore.upsert(peerName, entry);
@@ -235,6 +243,9 @@ export class GhostyRuntime {
     const now = new Date().toISOString();
     const manager = SessionManager.open(sessionFile, this.peerSessionDir(peerName));
     const header = manager.getHeader();
+    const messageCount = manager.getEntries().filter((e: any) => e.type === "message").length;
+    const compactions = manager.getEntries().filter((e: any) => e.type === "compaction").length;
+
     const entry: CatalogEntry = {
       peerName,
       sessionId,
@@ -243,9 +254,9 @@ export class GhostyRuntime {
       lastUsedAt: now,
       cwd: header?.cwd ?? this.workDir,
       stats: {
-        messageCount: manager.getEntries().filter((e: any) => e.type === "message").length,
+        messageCount,
         contextPercent: null,
-        compactions: manager.getEntries().filter((e: any) => e.type === "compaction").length,
+        compactions,
       },
       semantic: {
         title: request.task.trim().slice(0, 80) || `${peerName} session`,
@@ -254,6 +265,12 @@ export class GhostyRuntime {
         updatedAt: new Date(0).toISOString(),
         source: "llm",
         confidence: "low",
+        basis: {
+          messageCount,
+          toolCalls: undefined,
+          compactions,
+          lastUsedAt: now,
+        },
       },
     };
     await this.catalogStore.upsert(peerName, entry);
@@ -312,13 +329,14 @@ export class GhostyRuntime {
       this.busySessionIds.add(peer.sessionId);
       this.pool.touch(peer.sessionId);
 
-      await this.trace.append({
-        type: "delegate_start",
-        peerName: normalized.peerName,
-        peerSessionId: peer.sessionId,
-        peerSessionState: peer.sessionState,
-        taskLen: normalized.task.length,
-      });
+      try {
+        await this.trace.append({
+          type: "delegate_start",
+          peerName: normalized.peerName,
+          peerSessionId: peer.sessionId,
+          peerSessionState: peer.sessionState,
+          taskLen: normalized.task.length,
+        });
 
       if (routing.action === "compact_then_resume") {
         try {
@@ -405,6 +423,7 @@ export class GhostyRuntime {
       const updated = await this.catalogStore.patch(normalized.peerName, peer.sessionId, {
         sessionFile,
         lastUsedAt: nowIso,
+        sessionName: peer.sessionManager.getSessionName() ?? undefined,
         stats: {
           messageCount: stats.totalMessages,
           toolCalls: stats.toolCalls,
@@ -420,9 +439,37 @@ export class GhostyRuntime {
         });
       }
 
+      // Semantic enrichment + session naming MUST be best-effort.
+      // Delegation/tool results are higher precedence than routing/semantic metadata.
       const catalogEntry = this.catalogStore.getEntry(normalized.peerName, peer.sessionId);
       if (catalogEntry) {
-        await this.router.ensureSemantic(catalogEntry, normalized, output.summary);
+        try {
+          const enriched = await this.router.ensureSemantic(catalogEntry, normalized, output.summary);
+          const desiredName = formatSessionName(normalized.peerName, enriched.semantic.title);
+          const currentName = peer.sessionManager.getSessionName();
+          if (desiredName && desiredName !== currentName) {
+            peer.sessionManager.appendSessionInfo(desiredName);
+            await this.trace.append({
+              type: "session_name_updated",
+              peerName: normalized.peerName,
+              sessionId: peer.sessionId,
+              oldName: currentName,
+              newName: desiredName,
+            });
+
+            // Mirror into catalog deterministically.
+            await this.catalogStore.patch(normalized.peerName, peer.sessionId, {
+              sessionName: desiredName,
+            });
+          }
+        } catch (err: any) {
+          await this.trace.append({
+            type: "delegate_semantic_error",
+            peerName: normalized.peerName,
+            peerSessionId: peer.sessionId,
+            error: err?.message ?? String(err),
+          });
+        }
       }
 
       await this.trace.append({
@@ -445,17 +492,18 @@ export class GhostyRuntime {
         busySessionIds: this.busySessionIds,
       });
 
-      this.busySessionIds.delete(peer.sessionId);
-
-      return {
-        peerName: normalized.peerName,
-        sessionId: peer.sessionId,
-        sessionState: peer.sessionState,
-        output,
-        reportSource,
-        rawText,
-        routing,
-      };
+        return {
+          peerName: normalized.peerName,
+          sessionId: peer.sessionId,
+          sessionState: peer.sessionState,
+          output,
+          reportSource,
+          rawText,
+          routing,
+        };
+      } finally {
+        this.busySessionIds.delete(peer.sessionId);
+      }
     });
   }
 

@@ -37,11 +37,11 @@
       "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch"],
       "thinkingLevel": "off",
       "sampling": {
-        "temperature": 1.2,
+        "temperature": 1.1,
         "topP": 1.0,
         "topK": -1,
         "minP": 0.05,
-        "presencePenalty": 1.0
+        "presencePenalty": 0.9
       },
       "extra_body": {
         "chat_template_kwargs": {

@@ -34,14 +34,16 @@ import { JsonlTrace } from "../logging/jsonlTrace.js";
 import type { GhostyConfig } from "../config/schema.js";
 import type { Env } from "../env.js";
 import { loadPeerPromptParts } from "../prompts/loadPeerPromptParts.js";
+import { discoverVllmDefaultModel } from "./vllmModelDiscovery.js";
 
-function buildVllmModel(env: Env, config: GhostyConfig): Model<"openai-completions"> {
+function buildVllmModel(args: { baseUrl: string; modelId: string; config: GhostyConfig }): Model<"openai-completions"> {
+  const { baseUrl, modelId, config } = args;
   return {
-    id: "omnicoder-9b",
-    name: "omnicoder-9b (vLLM)",
+    id: modelId,
+    name: `${modelId} (vLLM)`,
     api: "openai-completions",
     provider: "vllm",
-    baseUrl: env.VLLM_BASE_URL || config.defaults.vllmBaseUrl,
+    baseUrl,
     reasoning: false,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -85,19 +87,22 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
   const sessionManager = sessionManagerOverride ?? SessionManager.continueRecent(workDir, sessionDir);
   const settingsManager = SettingsManager.create(runDir);
 
+  const baseUrl = env.VLLM_BASE_URL || config.defaults.vllmBaseUrl;
+  const vllmModel = await discoverVllmDefaultModel(baseUrl);
+
   const authStorage = AuthStorage.inMemory();
   authStorage.setRuntimeApiKey("vllm", "dummy");
   const modelRegistry = ModelRegistry.create(authStorage);
   // vLLM doesn't require a real key, but pi's AgentSession expects *some* apiKey to be configured.
   modelRegistry.registerProvider("vllm", {
     api: "openai-completions",
-    baseUrl: env.VLLM_BASE_URL || config.defaults.vllmBaseUrl,
+    baseUrl,
     apiKey: "dummy",
     authHeader: false,
     models: [
       {
-        id: "omnicoder-9b",
-        name: "omnicoder-9b (vLLM)",
+        id: vllmModel.id,
+        name: `${vllmModel.id} (vLLM)`,
         reasoning: false,
         input: ["text"],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -152,7 +157,7 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
     explicitPeerAddressingExtensionFactory(agentName),
   ];
 
-  const model = buildVllmModel(env, config);
+  const model = buildVllmModel({ baseUrl, modelId: vllmModel.id, config });
 
   const services = await createAgentSessionServices({
     cwd: workDir,
