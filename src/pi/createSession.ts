@@ -47,8 +47,8 @@ function buildVllmModel(args: { baseUrl: string; modelId: string; config: Ghosty
     reasoning: false,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: config.defaults.model.contextWindow,
-    maxTokens: config.defaults.model.maxTokens,
+    contextWindow: config.defaults.runtime!.model.contextWindow,
+    maxTokens: config.defaults.runtime!.model.maxTokens,
     compat: {
       supportsDeveloperRole: false,
       supportsReasoningEffort: false,
@@ -87,7 +87,7 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
   const sessionManager = sessionManagerOverride ?? SessionManager.continueRecent(workDir, sessionDir);
   const settingsManager = SettingsManager.create(runDir);
 
-  const baseUrl = env.VLLM_BASE_URL || config.defaults.vllmBaseUrl;
+  const baseUrl = env.VLLM_BASE_URL || config.defaults.runtime!.vllmBaseUrl;
   const vllmModel = await discoverVllmDefaultModel(baseUrl);
 
   const authStorage = AuthStorage.inMemory();
@@ -106,8 +106,8 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
         reasoning: false,
         input: ["text"],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: config.defaults.model.contextWindow,
-        maxTokens: config.defaults.model.maxTokens,
+        contextWindow: config.defaults.runtime!.model.contextWindow,
+        maxTokens: config.defaults.runtime!.model.maxTokens,
       },
     ],
   } as any);

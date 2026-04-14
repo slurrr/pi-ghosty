@@ -13,7 +13,7 @@ import {
 import { completeSimple } from "@mariozechner/pi-ai";
 import type { Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
-import { loadConfigFromFile, loadExtensionConfigFromFile } from "../../../src/config/loadConfig.js";
+import { loadConfigFromFile } from "../../../src/config/loadConfig.js";
 import { loadPeerPromptParts } from "../../../src/prompts/loadPeerPromptParts.js";
 import {
   buildPeerDelegationPrompt,
@@ -27,6 +27,7 @@ import { createPeerReportTool } from "../../../src/runtime/peerReportTool.js";
 import { Semaphore } from "../../../src/runtime/concurrency.js";
 import { SessionCatalogStore, type CatalogEntry } from "../../../src/runtime/sessionCatalogStore.js";
 import { formatSessionName } from "../../../src/runtime/sessionNaming.js";
+import { modelKey, resolveRoutingDefaults } from "../../../src/config/rules.js";
 import { roleSystemPromptExtensionFactory } from "../../../src/extensions/roleSystemPromptExtension.js";
 import { samplingExtensionFactory } from "../../../src/extensions/samplingExtension.js";
 
@@ -55,23 +56,6 @@ function isGhostyExtensionExplicitlyRequested(metaUrl: string): boolean {
   return false;
 }
 
-function basename(path: string): string {
-  return path.split(/[\\/]/).pop() ?? path;
-}
-
-function getRequestedCliModel(): { provider: string; id: string } | null {
-  const argv = process.argv.slice(2);
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg !== "--model") continue;
-    const raw = String(argv[i + 1] ?? "").trim();
-    if (!raw || !raw.includes("/")) return null;
-    const [provider, id] = raw.split("/", 2);
-    if (!provider || !id) return null;
-    return { provider: provider.toLowerCase(), id };
-  }
-  return null;
-}
 
 function lastAssistantText(messages: any[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -177,35 +161,18 @@ export default function (pi: any) {
   const projectDir = getProjectDirFromImportMetaUrl(import.meta.url);
   const rawConfigPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim() || "./pi-agent-frontier.json";
   const resolvedConfigPath = resolve(projectDir, rawConfigPath);
-  const configBase = basename(resolvedConfigPath);
-  const configMode = configBase === "pi-agent-local.json" ? "local" : "frontier";
-  const config = configMode === "local" ? loadConfigFromFile(resolvedConfigPath) : loadExtensionConfigFromFile(resolvedConfigPath);
+  const config = loadConfigFromFile(resolvedConfigPath);
   const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty-pi");
   const appendSystemPath = resolve(projectDir, ".pi", "APPEND_SYSTEM.md");
 
-  function assertModelAllowedByConfigMode(model: { provider: string; id: string } | null | undefined, source: string) {
-    if (!model) return;
-    const provider = String(model.provider || "").trim().toLowerCase();
-    if (configMode === "local" && provider !== "vllm") {
-      throw new Error(`Local config requires vllm models, got ${provider}/${model.id} (${source})`);
-    }
-    if (configMode === "frontier" && provider === "vllm") {
-      throw new Error(`Frontier config cannot be used with vllm models, got ${provider}/${model.id} (${source})`);
-    }
-  }
+  samplingExtensionFactory(config, "coordinator", {
+    runDir,
+    sessionId: "coordinator",
+    projectTag: config.defaults.projectTag,
+    traceSampling: false,
+  })(pi);
 
-  assertModelAllowedByConfigMode(getRequestedCliModel(), "cli --model");
-
-  if (configMode === "local") {
-    samplingExtensionFactory(config, "coordinator", {
-      runDir,
-      sessionId: "coordinator",
-      projectTag: config.defaults.projectTag,
-      traceSampling: false,
-    })(pi);
-  }
-
-  const maxParallelDelegations = config.defaults.routing?.maxParallelDelegations ?? 2;
+  const maxParallelDelegations = config.routing.defaults.maxParallelDelegations;
   const delegationSemaphore = new Semaphore(maxParallelDelegations);
 
   const catalogStore = new SessionCatalogStore(runDir, config.defaults.projectTag);
@@ -275,7 +242,6 @@ export default function (pi: any) {
   // Ensure coordinator does NOT get write/edit/bash unless explicitly allowed.
   // Also ensures peer sessions opened via /peer open get their configured surfaces.
   pi.on?.("session_start", async (_event: any, ctx: any) => {
-    assertModelAllowedByConfigMode(ctx?.model, "active session model");
     const role = inferRoleFromSessionFile(ctx?.sessionManager?.getSessionFile?.());
     activeRole = role;
     applyToolSurface(role);
@@ -390,7 +356,7 @@ export default function (pi: any) {
   }
 
   async function maybeEnrichSemantic(entry: CatalogEntry, request: any, reportSummary: string, ctx: any): Promise<CatalogEntry> {
-    const cooldownMs = config.defaults.routing?.semantic?.updateCooldownMs ?? 3600000;
+    const cooldownMs = config.routing.defaults.semantic.updateCooldownMs ?? 3600000;
     const last = Date.parse(entry.semantic?.updatedAt ?? "");
     const now = Date.now();
 
@@ -480,11 +446,6 @@ export default function (pi: any) {
     return globToRegex(pattern).test(value);
   }
 
-  function modelKey(model: { provider: string; id: string } | null | undefined): string {
-    if (!model) return "";
-    return `${String(model.provider).toLowerCase()}/${stripThinkingSuffix(String(model.id)).toLowerCase()}`;
-  }
-
   function modelMatchesPattern(model: Model<any>, pattern: string): boolean {
     const normalizedPattern = stripThinkingSuffix(pattern);
     const providerScopedId = modelKey(model);
@@ -559,7 +520,6 @@ export default function (pi: any) {
         const exact = pool.find((m: any) => modelKey(m) === modelKey({ provider, id }));
         if (exact) {
           const resolved = { provider: exact.provider, id: exact.id };
-          assertModelAllowedByConfigMode(resolved, "resolved model spec");
           return resolved;
         }
       }
@@ -570,7 +530,6 @@ export default function (pi: any) {
       const exact = pool.find((m: any) => String(m.provider).toLowerCase() === provider && stripThinkingSuffix(String(m.id)) === raw);
       if (exact) {
         const resolved = { provider: exact.provider, id: exact.id };
-        assertModelAllowedByConfigMode(resolved, "resolved model spec");
         return resolved;
       }
     }
@@ -582,7 +541,6 @@ export default function (pi: any) {
 
     if (matches.length === 1) {
       const resolved = { provider: matches[0].provider, id: matches[0].id };
-      assertModelAllowedByConfigMode(resolved, "resolved model spec");
       return resolved;
     }
 
@@ -621,7 +579,8 @@ export default function (pi: any) {
 
     // Build routing candidates from catalog if available.
     await catalogLoaded;
-    const maxCandidates = config.defaults.routing?.semantic?.maxCandidates ?? 8;
+    const routingConfig = resolveRoutingDefaults(config, requiredModel ?? (ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : null));
+    const maxCandidates = routingConfig.semantic.maxCandidates ?? 8;
     let candidates = catalogStore
       .list(peerName as any)
       .filter((e) => !e.status?.retired)
@@ -762,16 +721,12 @@ export default function (pi: any) {
         // Avoid auto-loading extensions from cwd. We only need our role system prompt shaper here.
         noExtensions: true,
         extensionFactories: [
-          ...(configMode === "local"
-            ? [
-                samplingExtensionFactory(config, parsed.peerName, {
-                  runDir,
-                  sessionId: peerSessionId,
-                  projectTag: config.defaults.projectTag,
-                  traceSampling: false,
-                }),
-              ]
-            : []),
+          samplingExtensionFactory(config, parsed.peerName, {
+            runDir,
+            sessionId: peerSessionId,
+            projectTag: config.defaults.projectTag,
+            traceSampling: false,
+          }),
           roleSystemPromptExtensionFactory(parsed.peerName),
         ],
 

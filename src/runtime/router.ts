@@ -1,6 +1,7 @@
 import type { Model } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
 import type { Env } from "../env.js";
+import { resolveRoutingDefaults } from "../config/rules.js";
 import type { GhostyConfig } from "../config/schema.js";
 import { delegateRequestSchema, routingDecisionSchema, type DelegateRequest, type RoutingDecision } from "./contracts.js";
 import type { JsonlTrace } from "../logging/jsonlTrace.js";
@@ -41,7 +42,7 @@ export class Router {
   ) {}
 
   private async buildRouterModel(): Promise<Model<"openai-completions">> {
-    const baseUrl = this.env.VLLM_BASE_URL || this.config.defaults.vllmBaseUrl;
+    const baseUrl = this.env.VLLM_BASE_URL || this.config.defaults.runtime!.vllmBaseUrl;
     const { discoverVllmDefaultModel } = await import("../pi/vllmModelDiscovery.js");
     const vllmModel = await discoverVllmDefaultModel(baseUrl);
 
@@ -54,8 +55,8 @@ export class Router {
       reasoning: false,
       input: ["text"],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: this.config.defaults.model.contextWindow,
-      maxTokens: this.config.defaults.model.maxTokens,
+      contextWindow: this.config.defaults.runtime!.model.contextWindow,
+      maxTokens: this.config.defaults.runtime!.model.maxTokens,
       compat: {
         supportsDeveloperRole: false,
         supportsReasoningEffort: false,
@@ -142,7 +143,7 @@ export class Router {
   }
 
   async ensureSemantic(entry: CatalogEntry, request: DelegateRequest, reportSummary?: string): Promise<CatalogEntry> {
-    const cooldown = this.config.defaults.routing?.semantic?.updateCooldownMs ?? 3600000;
+    const cooldown = resolveRoutingDefaults(this.config, await this.getRouterModel()).semantic.updateCooldownMs ?? 3600000;
     const now = Date.now();
     const last = Date.parse(entry.semantic?.updatedAt ?? "");
     const hasSemantic = !!entry.semantic?.title && !!entry.semantic?.summary && Array.isArray(entry.semantic?.tags);
@@ -263,7 +264,7 @@ export class Router {
         if (aComp !== bComp) return aComp - bComp;
         return Date.parse(b.lastUsedAt) - Date.parse(a.lastUsedAt);
       })
-      .slice(0, this.config.defaults.routing?.semantic?.maxCandidates ?? 12);
+      .slice(0, resolveRoutingDefaults(this.config, await this.getRouterModel()).semantic.maxCandidates ?? 12);
 
     const candidates: CatalogEntry[] = [];
     for (const c of candidatesRaw) {
@@ -274,7 +275,7 @@ export class Router {
       return { action: "new", reason: "no candidates", confidence: 1 };
     }
 
-    const compactThreshold = this.config.defaults.routing?.compactThresholdPercent ?? 50;
+    const compactThreshold = resolveRoutingDefaults(this.config, await this.getRouterModel()).compactThresholdPercent ?? 50;
     const prompt = [
       "Return strict JSON only.",
       "Choose best session routing action.",

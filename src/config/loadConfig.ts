@@ -1,47 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import {
-  ghostyConfigSchema,
-  ghostyExtensionConfigSchema,
-  type GhostyConfig,
-  type GhostyExtensionConfig,
-} from "./schema.js";
+import { ghostyConfigSchema, type GhostyConfig, type RequestRule } from "./schema.js";
 
 const DEFAULT_RUNTIME_CONFIG_PATH = "pi-agent-local.json";
 const DEFAULT_EXTENSION_CONFIG_PATH = "pi-agent-frontier.json";
 const LEGACY_CONFIG_PATH = "pi-agent.json";
-
-function configBasename(configPath: string): string {
-  return configPath.split(/[\\/]/).pop() ?? configPath;
-}
-
-function assertRuntimeConfigPath(configPath: string) {
-  const base = configBasename(configPath);
-  if (base === DEFAULT_EXTENSION_CONFIG_PATH) {
-    throw new Error(`Runtime ghosty must load ${DEFAULT_RUNTIME_CONFIG_PATH}, not ${DEFAULT_EXTENSION_CONFIG_PATH}: ${configPath}`);
-  }
-}
-
-function assertExtensionConfigPath(configPath: string) {
-  const base = configBasename(configPath);
-  if (base === DEFAULT_RUNTIME_CONFIG_PATH) {
-    return;
-  }
-}
-
-export function loadConfigFromFile(configPath: string): GhostyConfig {
-  assertRuntimeConfigPath(configPath);
-  const raw = readFileSync(configPath, "utf-8");
-  const json = JSON.parse(raw) as unknown;
-  return ghostyConfigSchema.parse(json);
-}
-
-export function loadExtensionConfigFromFile(configPath: string): GhostyExtensionConfig {
-  assertExtensionConfigPath(configPath);
-  const raw = readFileSync(configPath, "utf-8");
-  const json = JSON.parse(raw) as unknown;
-  return ghostyExtensionConfigSchema.parse(json);
-}
 
 function resolveFirstExisting(rootDir: string, candidates: string[]): string {
   for (const candidate of candidates) {
@@ -51,12 +14,90 @@ function resolveFirstExisting(rootDir: string, candidates: string[]): string {
   return resolve(rootDir, candidates[0]);
 }
 
+function normalizeShorthandRequestRules(json: any): RequestRule[] {
+  const defaults = json?.defaults ?? {};
+  const agents = json?.agents ?? {};
+  const rules: RequestRule[] = [];
+
+  if (defaults?.sampling) {
+    rules.push({
+      when: { model: ["vllm/*"] },
+      apply: { sampling: defaults.sampling },
+    });
+  }
+
+  for (const [agentName, agent] of Object.entries<any>(agents)) {
+    const apply: any = {};
+    if (agent?.sampling) apply.sampling = agent.sampling;
+    if (agent?.extraBody) apply.extraBody = agent.extraBody;
+    if (agent?.extra_body) apply.extra_body = agent.extra_body;
+    if (Object.keys(apply).length === 0) continue;
+    rules.push({
+      when: { agent: [agentName], model: ["vllm/*"] },
+      apply,
+    });
+  }
+
+  return rules;
+}
+
+function normalizeConfigJson(json: any): GhostyConfig {
+  const defaults = json?.defaults ?? {};
+  const agents = json?.agents ?? {};
+  const runtime = defaults.runtime ?? ((defaults.vllmBaseUrl || defaults.hindsightBaseUrl || defaults.hindsightBankId || defaults.model)
+    ? {
+        vllmBaseUrl: defaults.vllmBaseUrl,
+        hindsightBaseUrl: defaults.hindsightBaseUrl,
+        hindsightBankId: defaults.hindsightBankId,
+        model: defaults.model,
+      }
+    : undefined);
+
+  const shorthandRules = normalizeShorthandRequestRules(json);
+  const explicitRules = Array.isArray(json?.requestRules) ? json.requestRules : [];
+  const routing = json?.routing ?? { defaults: defaults.routing ?? undefined, budgetGuards: {} };
+
+  return ghostyConfigSchema.parse({
+    defaults: {
+      projectTag: defaults.projectTag,
+      runtime,
+    },
+    agents: Object.fromEntries(
+      Object.entries<any>(agents).map(([name, agent]) => [
+        name,
+        {
+          tools: agent?.tools ?? [],
+          thinkingLevel: agent?.thinkingLevel ?? "off",
+          defaultModel: agent?.defaultModel,
+        },
+      ]),
+    ),
+    requestRules: [...shorthandRules, ...explicitRules],
+    routing: {
+      defaults: routing?.defaults ?? {},
+      budgetGuards: routing?.budgetGuards ?? {},
+    },
+    routingRules: Array.isArray(json?.routingRules) ? json.routingRules : [],
+    modelScopePresets: json?.modelScopePresets ?? {},
+  });
+}
+
+export function loadConfigFromFile(configPath: string): GhostyConfig {
+  const raw = readFileSync(configPath, "utf-8");
+  const json = JSON.parse(raw) as unknown;
+  return normalizeConfigJson(json as any);
+}
+
+export function loadExtensionConfigFromFile(configPath: string): GhostyConfig {
+  return loadConfigFromFile(configPath);
+}
+
 export function loadConfig(rootDir: string): GhostyConfig {
-  const path = resolveFirstExisting(rootDir, [DEFAULT_RUNTIME_CONFIG_PATH, LEGACY_CONFIG_PATH]);
+  const path = resolveFirstExisting(rootDir, [DEFAULT_RUNTIME_CONFIG_PATH, DEFAULT_EXTENSION_CONFIG_PATH, LEGACY_CONFIG_PATH]);
   return loadConfigFromFile(path);
 }
 
-export function loadExtensionConfig(rootDir: string): GhostyExtensionConfig {
-  const path = resolveFirstExisting(rootDir, [DEFAULT_EXTENSION_CONFIG_PATH, LEGACY_CONFIG_PATH]);
+export function loadExtensionConfig(rootDir: string): GhostyConfig {
+  const path = resolveFirstExisting(rootDir, [DEFAULT_EXTENSION_CONFIG_PATH, DEFAULT_RUNTIME_CONFIG_PATH, LEGACY_CONFIG_PATH]);
   return loadExtensionConfigFromFile(path);
 }

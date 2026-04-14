@@ -81,7 +81,7 @@ export class GhostyRuntime {
     private readonly trace: JsonlTrace,
     private readonly artifacts: ArtifactStore,
   ) {
-    const routing = this.config.defaults.routing;
+    const routing = this.config.routing.defaults;
     this.semaphore = new Semaphore(routing.maxParallelDelegations);
     this.pool = new SessionPool(this.projectDir, this.workDir, this.runDir, this.env, this.config);
     this.catalogStore = new SessionCatalogStore(this.runDir, this.config.defaults.projectTag);
@@ -432,7 +432,7 @@ export class GhostyRuntime {
         },
       });
 
-      const retireAfter = this.config.defaults.routing.retireAfterCompactions;
+      const retireAfter = this.config.routing.defaults.retireAfterCompactions;
       if (updated && (updated.stats?.compactions ?? 0) >= retireAfter) {
         await this.catalogStore.patch(normalized.peerName, peer.sessionId, {
           status: { retired: true, retireReason: `compactions>=${retireAfter}` },
@@ -487,8 +487,8 @@ export class GhostyRuntime {
       });
 
       this.pool.enforceCaps({
-        maxTotal: this.config.defaults.routing.maxLoadedSessionsTotal,
-        maxPerPeer: this.config.defaults.routing.maxLoadedSessionsPerPeer,
+        maxTotal: this.config.routing.defaults.maxLoadedSessionsTotal,
+        maxPerPeer: this.config.routing.defaults.maxLoadedSessionsPerPeer,
         busySessionIds: this.busySessionIds,
       });
 
@@ -517,7 +517,7 @@ export class GhostyRuntime {
     await this.trace.append({
       type: "delegate_batch_start",
       requestCount: normalized.requests.length,
-      parallelism: this.config.defaults.routing.maxParallelDelegations,
+      parallelism: this.config.routing.defaults.maxParallelDelegations,
     });
 
     const results = await Promise.all(normalized.requests.map((r) => this.delegateToPeer(r)));
@@ -526,7 +526,7 @@ export class GhostyRuntime {
       type: "delegate_batch_end",
       requestCount: normalized.requests.length,
       durationMs: Date.now() - started,
-      parallelism: this.config.defaults.routing.maxParallelDelegations,
+      parallelism: this.config.routing.defaults.maxParallelDelegations,
       sessionLocks: this.sessionMutex.keys().length,
     });
     return results;

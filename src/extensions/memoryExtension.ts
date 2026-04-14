@@ -44,11 +44,11 @@ export function memoryExtensionFactory(
   paths: { runDir: string },
 ): ExtensionFactory {
   const hindsight = createHindsightClient({
-    baseUrl: env.HINDSIGHT_BASE_URL || config.defaults.hindsightBaseUrl,
-    bankId: env.HINDSIGHT_BANK_ID || config.defaults.hindsightBankId,
+    baseUrl: env.HINDSIGHT_BASE_URL || config.defaults.runtime!.hindsightBaseUrl,
+    bankId: env.HINDSIGHT_BANK_ID || config.defaults.runtime!.hindsightBankId,
   });
 
-  const bankId = env.HINDSIGHT_BANK_ID || config.defaults.hindsightBankId;
+  const bankId = env.HINDSIGHT_BANK_ID || config.defaults.runtime!.hindsightBankId;
   const projectTag = env.PROJECT_TAG || config.defaults.projectTag;
 
   const baseTags = [projectTag, `agent:${agentName}`, `session:${sessionId}`];
