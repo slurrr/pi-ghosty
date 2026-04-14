@@ -13,7 +13,7 @@ import {
 import { completeSimple } from "@mariozechner/pi-ai";
 import type { Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
-import { loadExtensionConfigFromFile } from "../../../src/config/loadConfig.js";
+import { loadConfigFromFile, loadExtensionConfigFromFile } from "../../../src/config/loadConfig.js";
 import { loadPeerPromptParts } from "../../../src/prompts/loadPeerPromptParts.js";
 import {
   buildPeerDelegationPrompt,
@@ -28,6 +28,7 @@ import { Semaphore } from "../../../src/runtime/concurrency.js";
 import { SessionCatalogStore, type CatalogEntry } from "../../../src/runtime/sessionCatalogStore.js";
 import { formatSessionName } from "../../../src/runtime/sessionNaming.js";
 import { roleSystemPromptExtensionFactory } from "../../../src/extensions/roleSystemPromptExtension.js";
+import { samplingExtensionFactory } from "../../../src/extensions/samplingExtension.js";
 
 const GHOSTY_PROMPT_MARKER = "GHOSTY_PROMPT_MARKER_v1";
 
@@ -52,6 +53,24 @@ function isGhostyExtensionExplicitlyRequested(metaUrl: string): boolean {
   }
 
   return false;
+}
+
+function basename(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path;
+}
+
+function getRequestedCliModel(): { provider: string; id: string } | null {
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg !== "--model") continue;
+    const raw = String(argv[i + 1] ?? "").trim();
+    if (!raw || !raw.includes("/")) return null;
+    const [provider, id] = raw.split("/", 2);
+    if (!provider || !id) return null;
+    return { provider: provider.toLowerCase(), id };
+  }
+  return null;
 }
 
 function lastAssistantText(messages: any[]): string {
@@ -158,9 +177,33 @@ export default function (pi: any) {
   const projectDir = getProjectDirFromImportMetaUrl(import.meta.url);
   const rawConfigPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim() || "./pi-agent-frontier.json";
   const resolvedConfigPath = resolve(projectDir, rawConfigPath);
-  const config = loadExtensionConfigFromFile(resolvedConfigPath);
+  const configBase = basename(resolvedConfigPath);
+  const configMode = configBase === "pi-agent-local.json" ? "local" : "frontier";
+  const config = configMode === "local" ? loadConfigFromFile(resolvedConfigPath) : loadExtensionConfigFromFile(resolvedConfigPath);
   const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty-pi");
   const appendSystemPath = resolve(projectDir, ".pi", "APPEND_SYSTEM.md");
+
+  function assertModelAllowedByConfigMode(model: { provider: string; id: string } | null | undefined, source: string) {
+    if (!model) return;
+    const provider = String(model.provider || "").trim().toLowerCase();
+    if (configMode === "local" && provider !== "vllm") {
+      throw new Error(`Local config requires vllm models, got ${provider}/${model.id} (${source})`);
+    }
+    if (configMode === "frontier" && provider === "vllm") {
+      throw new Error(`Frontier config cannot be used with vllm models, got ${provider}/${model.id} (${source})`);
+    }
+  }
+
+  assertModelAllowedByConfigMode(getRequestedCliModel(), "cli --model");
+
+  if (configMode === "local") {
+    samplingExtensionFactory(config, "coordinator", {
+      runDir,
+      sessionId: "coordinator",
+      projectTag: config.defaults.projectTag,
+      traceSampling: false,
+    })(pi);
+  }
 
   const maxParallelDelegations = config.defaults.routing?.maxParallelDelegations ?? 2;
   const delegationSemaphore = new Semaphore(maxParallelDelegations);
@@ -232,6 +275,7 @@ export default function (pi: any) {
   // Ensure coordinator does NOT get write/edit/bash unless explicitly allowed.
   // Also ensures peer sessions opened via /peer open get their configured surfaces.
   pi.on?.("session_start", async (_event: any, ctx: any) => {
+    assertModelAllowedByConfigMode(ctx?.model, "active session model");
     const role = inferRoleFromSessionFile(ctx?.sessionManager?.getSessionFile?.());
     activeRole = role;
     applyToolSurface(role);
@@ -513,14 +557,22 @@ export default function (pi: any) {
       const id = stripThinkingSuffix(idRaw);
       if (provider && id) {
         const exact = pool.find((m: any) => modelKey(m) === modelKey({ provider, id }));
-        if (exact) return { provider: exact.provider, id: exact.id };
+        if (exact) {
+          const resolved = { provider: exact.provider, id: exact.id };
+          assertModelAllowedByConfigMode(resolved, "resolved model spec");
+          return resolved;
+        }
       }
     }
 
     const provider = String(ctx.model?.provider || "").trim().toLowerCase();
     if (provider) {
       const exact = pool.find((m: any) => String(m.provider).toLowerCase() === provider && stripThinkingSuffix(String(m.id)) === raw);
-      if (exact) return { provider: exact.provider, id: exact.id };
+      if (exact) {
+        const resolved = { provider: exact.provider, id: exact.id };
+        assertModelAllowedByConfigMode(resolved, "resolved model spec");
+        return resolved;
+      }
     }
 
     const token = raw.toLowerCase();
@@ -529,7 +581,9 @@ export default function (pi: any) {
     );
 
     if (matches.length === 1) {
-      return { provider: matches[0].provider, id: matches[0].id };
+      const resolved = { provider: matches[0].provider, id: matches[0].id };
+      assertModelAllowedByConfigMode(resolved, "resolved model spec");
+      return resolved;
     }
 
     return null;
@@ -707,7 +761,19 @@ export default function (pi: any) {
       resourceLoaderOptions: {
         // Avoid auto-loading extensions from cwd. We only need our role system prompt shaper here.
         noExtensions: true,
-        extensionFactories: [roleSystemPromptExtensionFactory(parsed.peerName)],
+        extensionFactories: [
+          ...(configMode === "local"
+            ? [
+                samplingExtensionFactory(config, parsed.peerName, {
+                  runDir,
+                  sessionId: peerSessionId,
+                  projectTag: config.defaults.projectTag,
+                  traceSampling: false,
+                }),
+              ]
+            : []),
+          roleSystemPromptExtensionFactory(parsed.peerName),
+        ],
 
         // Disable AGENTS.md/CLAUDE.md context-file crawling for peers.
         agentsFilesOverride: (_current) => ({ agentsFiles: [] }),
