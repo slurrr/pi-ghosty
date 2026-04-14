@@ -38,6 +38,7 @@ Useful flags:
 
 ## Notes
 - Canonical unified config now lives in `pi-agent-canonical.json` and is the default config used by ghosty.
+- Local model request shaping is now intended to be model-specific via `requestRules` (for example `vllm/omnicoder-9b` vs `vllm/gemma-4-e4b`), so multiple local models can coexist with separate knobs.
 - `pi-agent-local.json` and `pi-agent-frontier.json` remain as compatibility/migration examples while this branch finishes proving the unified shape.
 - `modelScopePresets` are helpers for applying Pi `enabledModels` presets; Pi `/scoped-models` remains canonical.
 - `pi-agent.json` remains as a legacy compatibility file while this branch finishes the migration.

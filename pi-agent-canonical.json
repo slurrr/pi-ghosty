@@ -40,7 +40,7 @@
   "requestRules": [
     {
       "when": {
-        "model": ["vllm/*"]
+        "model": ["vllm/omnicoder-9b"]
       },
       "apply": {
         "sampling": {
@@ -56,8 +56,20 @@
     },
     {
       "when": {
+        "model": ["vllm/gemma-4-e4b"]
+      },
+      "apply": {
+        "sampling": {
+          "temperature": 1.0,
+          "topP": 0.95,
+          "topK": 64
+        }
+      }
+    },
+    {
+      "when": {
         "agent": ["coordinator"],
-        "model": ["vllm/*"]
+        "model": ["vllm/omnicoder-9b"]
       },
       "apply": {
         "sampling": {
@@ -76,8 +88,27 @@
     },
     {
       "when": {
+        "agent": ["coordinator"],
+        "model": ["vllm/gemma-4-e4b"]
+      },
+      "apply": {
+        "sampling": {
+          "temperature": 1.0,
+          "topP": 0.95,
+          "topK": 64,
+          "presencePenalty": 0.9
+        },
+        "extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        }
+      }
+    },
+    {
+      "when": {
         "agent": ["researcher", "reviewer", "memory"],
-        "model": ["vllm/*"]
+        "model": ["vllm/omnicoder-9b"]
       },
       "apply": {
         "sampling": {
@@ -91,8 +122,33 @@
     },
     {
       "when": {
+        "agent": ["researcher", "reviewer", "memory"],
+        "model": ["vllm/gemma-4-e4b"]
+      },
+      "apply": {
+        "sampling": {
+          "temperature": 1.0,
+          "topP": 0.95,
+          "topK": 64,
+          "repetitionPenalty": 1.0
+        }
+      }
+    },
+    {
+      "when": {
         "agent": ["memory"],
-        "model": ["vllm/*"]
+        "model": ["vllm/omnicoder-9b"]
+      },
+      "apply": {
+        "sampling": {
+          "topP": 1.0
+        }
+      }
+    },
+    {
+      "when": {
+        "agent": ["memory"],
+        "model": ["vllm/gemma-4-e4b"]
       },
       "apply": {
         "sampling": {
@@ -149,6 +205,10 @@
     "hybrid-default": ["openai-codex/*", "vllm/*"],
     "local-only": ["vllm/*"],
     "frontier-preferred": ["openai-codex/*", "vllm/*"],
-    "local-preferred": ["vllm/*", "openai-codex/*"]
+    "local-preferred": ["vllm/*", "openai-codex/*"],
+    "omnicoder-only": ["vllm/omnicoder-9b"],
+    "gemma-only": ["vllm/gemma-4-e4b"],
+    "local-multi": ["vllm/omnicoder-9b", "vllm/gemma-4-e4b"],
+    "hybrid-multi": ["openai-codex/*", "vllm/omnicoder-9b", "vllm/gemma-4-e4b"]
   }
 }
