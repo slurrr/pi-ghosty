@@ -505,6 +505,89 @@ export default function (pi: any) {
     return { patterns, available, allowed };
   }
 
+  function getModelScopePresets(): Record<string, string[]> {
+    return config.modelScopePresets ?? {};
+  }
+
+  function arraysEqual(a: string[], b: string[]): boolean {
+    return a.length === b.length && a.every((v, i) => v === b[i]);
+  }
+
+  function classifyAllowedModels(allowed: Array<Model<any>>): "local-only" | "frontier-only" | "hybrid" | "custom" {
+    const providers = new Set(allowed.map((m) => String(m.provider).toLowerCase()));
+    if (providers.size === 0) return "custom";
+    if (providers.size === 1) return providers.has("vllm") ? "local-only" : "frontier-only";
+    if (providers.has("vllm")) return "hybrid";
+    return "frontier-only";
+  }
+
+  function providerCounts(models: Array<Model<any>>): string[] {
+    const counts = new Map<string, number>();
+    for (const model of models) {
+      const provider = String(model.provider).toLowerCase();
+      counts.set(provider, (counts.get(provider) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([provider, count]) => `- ${provider}: ${count}`);
+  }
+
+  async function renderModelsStatus(ctx: any): Promise<string> {
+    const modelScope = await getAllowedModels(ctx);
+    const presets = getModelScopePresets();
+    const matchingPreset = Object.entries(presets).find(([, patterns]) => arraysEqual(patterns, modelScope.patterns));
+    const scope = matchingPreset?.[0] ?? classifyAllowedModels(modelScope.allowed);
+    const enabledPatternsText = modelScope.patterns.length > 0 ? modelScope.patterns.join(", ") : "none";
+    const defaultLines = Object.entries(config.agents)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([agentName, agent]) => {
+        const def = (agent.defaultModel ?? "").trim();
+        if (!def) return `- ${agentName} -> none`;
+        const inScope = modelScope.allowed.some((m) => modelKey(m) === modelKey(resolveModelSpecSyncLike(def, ctx, modelScope.allowed)));
+        return `- ${agentName} -> ${def}${inScope ? " (in scope)" : " (out of scope or unresolved)"}`;
+      });
+
+    const presetLines = Object.keys(presets).length > 0
+      ? Object.entries(presets)
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([name, patterns]) => `- ${name}: ${patterns.join(", ") || "none"}`)
+      : ["- none configured"];
+
+    return [
+      "ghosty models",
+      `scope: ${scope}`,
+      `enabledModels: ${enabledPatternsText}`,
+      `allowedModels: ${modelScope.allowed.length}`,
+      "providers:",
+      ...providerCounts(modelScope.allowed),
+      "role defaults:",
+      ...defaultLines,
+      "presets:",
+      ...presetLines,
+    ].join("\n");
+  }
+
+  function resolveModelSpecSyncLike(spec: string, ctx: any, pool: Array<Model<any>>): { provider: string; id: string } | null {
+    const raw = stripThinkingSuffix((spec || "").trim());
+    if (!raw) return null;
+    if (raw.includes("/")) {
+      const [providerRaw, idRaw] = raw.split("/", 2);
+      const provider = providerRaw.trim().toLowerCase();
+      const id = stripThinkingSuffix(idRaw);
+      const exact = pool.find((m: any) => modelKey(m) === modelKey({ provider, id }));
+      if (exact) return { provider: exact.provider, id: exact.id };
+    }
+    const provider = String(ctx.model?.provider || "").trim().toLowerCase();
+    if (provider) {
+      const exact = pool.find((m: any) => String(m.provider).toLowerCase() === provider && stripThinkingSuffix(String(m.id)) === raw);
+      if (exact) return { provider: exact.provider, id: exact.id };
+    }
+    const token = raw.toLowerCase();
+    const matches = pool.filter((m: any) => String(m.id).toLowerCase().includes(token) || String(m.name ?? "").toLowerCase().includes(token));
+    if (matches.length === 1) return { provider: matches[0].provider, id: matches[0].id };
+    return null;
+  }
+
   async function resolveModelSpec(spec: string, ctx: any): Promise<{ provider: string; id: string } | null> {
     const raw = stripThinkingSuffix((spec || "").trim());
     if (!raw) return null;
@@ -875,7 +958,7 @@ export default function (pi: any) {
   }
 
   pi.registerCommand("ghosty", {
-    description: "Ghosty extension utilities. Subcommands: status, smoke",
+    description: "Ghosty extension utilities. Subcommands: status, models, smoke",
     handler: async (args: string, ctx: any) => {
       const parts = args.trim().split(/\s+/).filter(Boolean);
       const subcommand = (parts[0] || "status").toLowerCase();
@@ -909,6 +992,48 @@ export default function (pi: any) {
         return;
       }
 
+      if (subcommand === "models") {
+        const action = (parts[1] || "status").toLowerCase();
+        if (action === "status" || action === "show") {
+          const text = await renderModelsStatus(ctx);
+          if (ctx.hasUI) ctx.ui.notify(text, "info");
+          else process.stdout.write(`${text}\n`);
+          return;
+        }
+
+        if (action === "preset") {
+          const presetName = parts[2];
+          if (!presetName) {
+            const msg = "Usage: /ghosty models preset <name>";
+            if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+            else process.stdout.write(`${msg}\n`);
+            return;
+          }
+
+          const presets = getModelScopePresets();
+          const patterns = presets[presetName];
+          if (!patterns) {
+            const msg = `Unknown preset: ${presetName}. Available: ${Object.keys(presets).sort().join(", ") || "none"}`;
+            if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+            else process.stdout.write(`${msg}\n`);
+            return;
+          }
+
+          const settings = SettingsManager.create(ctx.cwd);
+          settings.setEnabledModels(patterns);
+          await settings.flush();
+          const text = `Applied preset ${presetName}: ${patterns.join(", ") || "none"}`;
+          if (ctx.hasUI) ctx.ui.notify(text, "info");
+          else process.stdout.write(`${text}\n`);
+          return;
+        }
+
+        const msg = "Usage: /ghosty models [status|preset <name>]";
+        if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+        else process.stdout.write(`${msg}\n`);
+        return;
+      }
+
       if (subcommand === "smoke") {
         const result = await delegateOnce(
           {
@@ -928,7 +1053,7 @@ export default function (pi: any) {
         return;
       }
 
-      const msg = `Unknown subcommand: ${subcommand}. Try: /ghosty status or /ghosty smoke`;
+      const msg = `Unknown subcommand: ${subcommand}. Try: /ghosty status, /ghosty models, or /ghosty smoke`;
       if (ctx.hasUI) ctx.ui.notify(msg, "warning");
       else process.stdout.write(`${msg}\n`);
     },

@@ -32,6 +32,13 @@
       }
     }
   },
+  "modelScopePresets": {
+    "frontier-only": ["openai-codex/*"],
+    "hybrid-default": ["openai-codex/*", "vllm/*"],
+    "local-only": ["vllm/*"],
+    "frontier-preferred": ["openai-codex/*", "vllm/*"],
+    "local-preferred": ["vllm/*", "openai-codex/*"]
+  },
   "agents": {
     "coordinator": {
       "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch"],
