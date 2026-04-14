@@ -958,7 +958,7 @@ export default function (pi: any) {
   }
 
   pi.registerCommand("ghosty", {
-    description: "Ghosty extension utilities. Subcommands: status, models, smoke",
+    description: "Ghosty extension utilities. Subcommands: status, models, smoke, system, peer",
     handler: async (args: string, ctx: any) => {
       const parts = args.trim().split(/\s+/).filter(Boolean);
       const subcommand = (parts[0] || "status").toLowerCase();
@@ -1053,128 +1053,120 @@ export default function (pi: any) {
         return;
       }
 
-      const msg = `Unknown subcommand: ${subcommand}. Try: /ghosty status, /ghosty models, or /ghosty smoke`;
+      if (subcommand === "system") {
+        const target = parts.slice(1).join(" ").trim().toLowerCase();
+        const prompt = ctx.getSystemPrompt?.();
+        if (!prompt) {
+          const msg = "No system prompt available.";
+          if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+          else process.stdout.write(`${msg}\n`);
+          return;
+        }
+
+        const isDump = target === "dump" || target === "dump guidelines";
+        const isGuidelines = target === "guidelines" || target === "dump guidelines";
+        const showPrompt = target === "";
+
+        if (!isDump && !isGuidelines && !showPrompt) {
+          const msg = "Usage: /ghosty system [dump|guidelines|dump guidelines]";
+          if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+          else process.stdout.write(`${msg}\n`);
+          return;
+        }
+
+        const effectivePrompt = computeGhostySystemPrompt(prompt, activeRole);
+        const content = isGuidelines ? extractGuidelines(effectivePrompt) ?? "(guidelines section not found)" : effectivePrompt;
+
+        if (isDump) {
+          const debugDir = resolve(runDir, "data", "debug");
+          mkdirSync(debugDir, { recursive: true });
+          const ts = new Date().toISOString().replace(/[:.]/g, "-");
+          const prefix = isGuidelines ? "system-guidelines" : "system";
+          const outPath = resolve(debugDir, `${prefix}-${ctx.sessionManager.getSessionId()}-${ts}.txt`);
+          writeFileSync(outPath, content, "utf8");
+          const msg = `Wrote ${outPath}`;
+          if (ctx.hasUI) ctx.ui.notify(msg, "info");
+          else process.stdout.write(`${msg}\n`);
+          return;
+        }
+
+        if (ctx.hasUI) {
+          await ctx.ui.editor(isGuidelines ? "System guidelines" : "System prompt", content);
+        } else {
+          process.stdout.write(`${content}\n`);
+        }
+        return;
+      }
+
+      if (subcommand === "peer") {
+        const peerArgs = parts.slice(1);
+        const peerSubcommand = (peerArgs[0] || "open").toLowerCase();
+
+        if (peerSubcommand !== "open") {
+          const msg = `Unknown subcommand: ${peerSubcommand}. Try: /ghosty peer open <peer>`;
+          if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+          else process.stdout.write(`${msg}\n`);
+          return;
+        }
+
+        const peerName = peerArgs[1];
+        if (!peerName || !ghostyPeerNames.includes(peerName as any)) {
+          const msg = `Usage: /ghosty peer open <peer> (one of: ${ghostyPeerNames.join(", ")})`;
+          if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+          else process.stdout.write(`${msg}\n`);
+          return;
+        }
+
+        if (!process.env.TMUX) {
+          const msg = "Not running inside tmux (TMUX env var not set). Start pi from tmux to use /ghosty peer open.";
+          if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+          else process.stdout.write(`${msg}\n`);
+          return;
+        }
+
+        const peerSessionDir = resolve(runDir, "data", "sessions", peerName);
+        mkdirSync(peerSessionDir, { recursive: true });
+
+        const sessions = await SessionManager.list(ctx.cwd, peerSessionDir);
+        if (sessions.length === 0) {
+          const msg = `No peer sessions found for ${peerName}. Delegate once first.`;
+          if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+          else process.stdout.write(`${msg}\n`);
+          return;
+        }
+
+        const mostRecent = [...sessions].sort((a: any, b: any) => +b.modified - +a.modified)[0];
+        const sessionPath = mostRecent.path;
+        const extPath = fileURLToPath(import.meta.url);
+        const cmd =
+          `GHOSTY_EXTENSION_ACTIVE=1 ` +
+          `GHOSTY_PI_RUN_DIR=${shellQuote(runDir)} ` +
+          `GHOSTY_AGENT_CONFIG_PATH=${shellQuote(resolvedConfigPath)} ` +
+          `pi --session ${shellQuote(sessionPath)} --session-dir ${shellQuote(peerSessionDir)} -e ${shellQuote(extPath)}`;
+
+        const res = spawnSync("tmux", ["new-window", "-n", peerName, cmd], {
+          encoding: "utf8",
+        });
+
+        if (res.status !== 0) {
+          const msg = `tmux new-window failed (exit ${res.status}): ${(res.stderr || res.stdout || "").trim()}`;
+          if (ctx.hasUI) ctx.ui.notify(msg, "error");
+          else process.stdout.write(`${msg}\n`);
+          return;
+        }
+
+        const ok = `Opened tmux window for ${peerName} (${sessionPath})`;
+        if (ctx.hasUI) ctx.ui.notify(ok, "info");
+        else process.stdout.write(`${ok}\n`);
+        return;
+      }
+
+      const msg = `Unknown subcommand: ${subcommand}. Try: /ghosty status, /ghosty models, /ghosty smoke, /ghosty system, or /ghosty peer`;
       if (ctx.hasUI) ctx.ui.notify(msg, "warning");
       else process.stdout.write(`${msg}\n`);
     },
   });
 
-  pi.registerCommand("system", {
-    description: "Show or dump the current effective system prompt. Usage: /system [dump|guidelines|dump guidelines]",
-    handler: async (args: string, ctx: any) => {
-      const target = args.trim().toLowerCase();
-      const prompt = ctx.getSystemPrompt?.();
-      if (!prompt) {
-        const msg = "No system prompt available.";
-        if (ctx.hasUI) ctx.ui.notify(msg, "warning");
-        else process.stdout.write(`${msg}\n`);
-        return;
-      }
-
-      const isDump = target === "dump" || target === "dump guidelines";
-      const isGuidelines = target === "guidelines" || target === "dump guidelines";
-      const showPrompt = target === "";
-
-      if (!isDump && !isGuidelines && !showPrompt) {
-        const msg = "Usage: /system [dump|guidelines|dump guidelines]";
-        if (ctx.hasUI) ctx.ui.notify(msg, "warning");
-        else process.stdout.write(`${msg}\n`);
-        return;
-      }
-
-      // ctx.getSystemPrompt() may return the base prompt when invoked as a command.
-      // Show what the next turn will see by applying ghosty transformations.
-      const effectivePrompt = computeGhostySystemPrompt(prompt, activeRole);
-      const content = isGuidelines ? extractGuidelines(effectivePrompt) ?? "(guidelines section not found)" : effectivePrompt;
-
-      if (isDump) {
-        const debugDir = resolve(runDir, "data", "debug");
-        mkdirSync(debugDir, { recursive: true });
-        const ts = new Date().toISOString().replace(/[:.]/g, "-");
-        const prefix = isGuidelines ? "system-guidelines" : "system";
-        const outPath = resolve(debugDir, `${prefix}-${ctx.sessionManager.getSessionId()}-${ts}.txt`);
-        writeFileSync(outPath, content, "utf8");
-        const msg = `Wrote ${outPath}`;
-        if (ctx.hasUI) ctx.ui.notify(msg, "info");
-        else process.stdout.write(`${msg}\n`);
-        return;
-      }
-
-      if (ctx.hasUI) {
-        await ctx.ui.editor(isGuidelines ? "System guidelines" : "System prompt", content);
-      } else {
-        process.stdout.write(`${content}\n`);
-      }
-    },
-  });
-
-  pi.registerCommand("peer", {
-    description: "Peer utilities. Subcommands: open <peer>",
-    handler: async (args: string, ctx: any) => {
-      const parts = args.trim().split(/\s+/).filter(Boolean);
-      const subcommand = (parts[0] || "open").toLowerCase();
-
-      if (subcommand !== "open") {
-        const msg = `Unknown subcommand: ${subcommand}. Try: /peer open <peer>`;
-        if (ctx.hasUI) ctx.ui.notify(msg, "warning");
-        else process.stdout.write(`${msg}\n`);
-        return;
-      }
-
-      const peerName = parts[1];
-      if (!peerName || !ghostyPeerNames.includes(peerName as any)) {
-        const msg = `Usage: /peer open <peer> (one of: ${ghostyPeerNames.join(", ")})`;
-        if (ctx.hasUI) ctx.ui.notify(msg, "warning");
-        else process.stdout.write(`${msg}\n`);
-        return;
-      }
-
-      if (!process.env.TMUX) {
-        const msg = "Not running inside tmux (TMUX env var not set). Start pi from tmux to use /peer open.";
-        if (ctx.hasUI) ctx.ui.notify(msg, "warning");
-        else process.stdout.write(`${msg}\n`);
-        return;
-      }
-
-      const peerSessionDir = resolve(runDir, "data", "sessions", peerName);
-      mkdirSync(peerSessionDir, { recursive: true });
-
-      const sessions = await SessionManager.list(ctx.cwd, peerSessionDir);
-      if (sessions.length === 0) {
-        const msg = `No peer sessions found for ${peerName}. Delegate once first.`;
-        if (ctx.hasUI) ctx.ui.notify(msg, "warning");
-        else process.stdout.write(`${msg}\n`);
-        return;
-      }
-
-      const mostRecent = [...sessions].sort((a: any, b: any) => +b.modified - +a.modified)[0];
-      const sessionPath = mostRecent.path;
-
-      // Open a new tmux window running pi on the peer session.
-      // We pass -e <this extension> so the same tools/commands are available.
-      const extPath = fileURLToPath(import.meta.url);
-      const cmd =
-        `GHOSTY_EXTENSION_ACTIVE=1 ` +
-        `GHOSTY_PI_RUN_DIR=${shellQuote(runDir)} ` +
-        `GHOSTY_AGENT_CONFIG_PATH=${shellQuote(resolvedConfigPath)} ` +
-        `pi --session ${shellQuote(sessionPath)} --session-dir ${shellQuote(peerSessionDir)} -e ${shellQuote(extPath)}`;
-
-      const res = spawnSync("tmux", ["new-window", "-n", peerName, cmd], {
-        encoding: "utf8",
-      });
-
-      if (res.status !== 0) {
-        const msg = `tmux new-window failed (exit ${res.status}): ${(res.stderr || res.stdout || "").trim()}`;
-        if (ctx.hasUI) ctx.ui.notify(msg, "error");
-        else process.stdout.write(`${msg}\n`);
-        return;
-      }
-
-      const ok = `Opened tmux window for ${peerName} (${sessionPath})`;
-      if (ctx.hasUI) ctx.ui.notify(ok, "info");
-      else process.stdout.write(`${ok}\n`);
-    },
-  });
 
   pi.registerTool(
     defineTool({
