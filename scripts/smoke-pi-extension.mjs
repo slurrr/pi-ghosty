@@ -7,7 +7,7 @@ import { resolve } from "node:path";
 const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty-pi");
 const extPath = resolve(process.cwd(), ".pi", "extensions", "ghosty", "index.ts");
 const sessionDir = resolve(runDir, "data", "sessions", "coordinator");
-const configPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim() || resolve(process.cwd(), "pi-agent-frontier.json");
+const configPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim() || resolve(process.cwd(), "pi-agent-canonical.json");
 const configBase = configPath.split(/[\\/]/).pop() || configPath;
 const defaultModel = configBase === "pi-agent-local.json" ? "vllm/omnicoder-9b" : "openai-codex/gpt-5.3-codex";
 const model = process.env.GHOSTY_PI_SMOKE_MODEL || defaultModel;

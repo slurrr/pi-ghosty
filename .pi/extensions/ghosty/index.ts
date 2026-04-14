@@ -159,7 +159,7 @@ export default function (pi: any) {
   }
 
   const projectDir = getProjectDirFromImportMetaUrl(import.meta.url);
-  const rawConfigPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim() || "./pi-agent-frontier.json";
+  const rawConfigPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim() || "./pi-agent-canonical.json";
   const resolvedConfigPath = resolve(projectDir, rawConfigPath);
   const config = loadConfigFromFile(resolvedConfigPath);
   const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty-pi");

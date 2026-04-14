@@ -32,13 +32,13 @@ Useful flags:
 - `GHOSTY_DEBUG_TOOL_BLOCKS=1`: trace tool blocks (policy + gating)
 - `GHOSTY_DEBUG_TOOL_SURFACE=1`: log allowed tool surface once per session
 - `GHOSTY_DEBUG_PROMPT_PARTS=1`: log which peer prompt part files were loaded (hashes)
-- `GHOSTY_AGENT_CONFIG_PATH=./pi-agent-frontier.json`: optional config override for ghosty Pi extension launches; defaults to `./pi-agent-frontier.json`
+- `GHOSTY_AGENT_CONFIG_PATH=./pi-agent-canonical.json`: optional config override for ghosty launches; defaults to `./pi-agent-canonical.json`
 - `/ghosty models`: show scoped model status plus configured presets
 - `/ghosty models preset <name>`: apply a configured `modelScopePresets` entry to Pi `enabledModels`
 
 ## Notes
-- Local runtime config lives in `pi-agent-local.json` (full shape: model, sampling, memory, tool surfaces).
-- Ghosty Pi extension config currently defaults to `pi-agent-frontier.json`, but both config examples now normalize into the same unified config shape.
+- Canonical unified config now lives in `pi-agent-canonical.json` and is the default config used by ghosty.
+- `pi-agent-local.json` and `pi-agent-frontier.json` remain as compatibility/migration examples while this branch finishes proving the unified shape.
 - `modelScopePresets` are helpers for applying Pi `enabledModels` presets; Pi `/scoped-models` remains canonical.
 - `pi-agent.json` remains as a legacy compatibility file while this branch finishes the migration.
 - Shared system prompt addendum is `.pi/APPEND_SYSTEM.md` (pi default system prompt is used).
