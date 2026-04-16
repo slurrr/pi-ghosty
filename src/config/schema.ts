@@ -23,6 +23,100 @@ export const runtimeDefaultsSchema = z.object({
   }),
 });
 
+const memoryTagMatchSchema = z.enum(["any", "all", "any_strict", "all_strict"]);
+const memoryBudgetSchema = z.enum(["low", "mid", "high"]);
+const memoryTimestampModeSchema = z.enum(["now", "message", "session", "none"]);
+
+export const memoryRecallSchema = z.object({
+  maxTokens: z.number().int().positive().default(2048),
+  budget: memoryBudgetSchema.default("mid"),
+  tagsMatch: memoryTagMatchSchema.default("all"),
+  types: z.array(z.string().min(1)).default(["observation", "world", "experience"]),
+  maxFacts: z.number().int().positive().default(30),
+  queryMaxChars: z.number().int().positive().optional(),
+  queryMaxTokens: z.number().int().positive().max(500).default(420),
+  queryTimestampMode: z.enum(["now", "message", "session", "custom"]).default("now"),
+  queryTimestampValue: z.string().datetime().optional(),
+  includeSourceFacts: z.boolean().default(false),
+  includeSourceFactsMaxTokens: z.number().int().positive().default(4096),
+  includeChunks: z.boolean().default(false),
+  includeChunksMaxTokens: z.number().int().positive().default(8192),
+  async: z.boolean().default(true),
+});
+
+export const memoryRetainSchema = z.object({
+  context: z.string().default("pi-ghosty agent session transcript"),
+  async: z.boolean().default(true),
+  timestampMode: memoryTimestampModeSchema.default("now"),
+  updateMode: z.enum(["replace", "append"]).default("replace"),
+  waitForCompletion: z.boolean().default(false),
+  waitTimeoutMs: z.number().int().positive().default(20000),
+  observationScopes: z.object({
+    mode: z.literal("custom").default("custom"),
+    includeProjectScope: z.boolean().default(true),
+    includeAgentScope: z.boolean().default(true),
+    includeSessionScope: z.boolean().default(false),
+  }).default({
+    mode: "custom",
+    includeProjectScope: true,
+    includeAgentScope: true,
+    includeSessionScope: false,
+  }),
+});
+
+export const memoryOperationsSchema = z.object({
+  enabled: z.boolean().default(false),
+  pollIntervalMs: z.number().int().positive().default(1000),
+  timeoutMs: z.number().int().positive().default(20000),
+});
+
+export const memoryReflectSchema = z.object({
+  enabled: z.boolean().default(false),
+  mode: z.enum(["manual", "scheduled"]).default("manual"),
+  budget: memoryBudgetSchema.default("low"),
+});
+
+export const memoryDefaultsSchema = z.object({
+  recall: memoryRecallSchema.default({
+    maxTokens: 2048,
+    budget: "mid",
+    tagsMatch: "all",
+    types: ["observation", "world", "experience"],
+    maxFacts: 30,
+    queryMaxTokens: 420,
+    queryTimestampMode: "now",
+    includeSourceFacts: false,
+    includeSourceFactsMaxTokens: 4096,
+    includeChunks: false,
+    includeChunksMaxTokens: 8192,
+    async: true,
+  }),
+  retain: memoryRetainSchema.default({
+    context: "pi-ghosty agent session transcript",
+    async: true,
+    timestampMode: "now",
+    updateMode: "replace",
+    waitForCompletion: false,
+    waitTimeoutMs: 20000,
+    observationScopes: {
+      mode: "custom",
+      includeProjectScope: true,
+      includeAgentScope: true,
+      includeSessionScope: false,
+    },
+  }),
+  operations: memoryOperationsSchema.default({
+    enabled: false,
+    pollIntervalMs: 1000,
+    timeoutMs: 20000,
+  }),
+  reflect: memoryReflectSchema.default({
+    enabled: false,
+    mode: "manual",
+    budget: "low",
+  }),
+});
+
 export const agentConfigSchema = z.object({
   tools: z.array(z.string()).default([]),
   thinkingLevel: thinkingLevelSchema.default("off"),
@@ -113,6 +207,7 @@ export const ghostyConfigSchema = z.object({
   defaults: z.object({
     projectTag: z.string().min(1),
     runtime: runtimeDefaultsSchema.optional(),
+    memory: memoryDefaultsSchema.default(memoryDefaultsSchema.parse({})),
   }),
   agents: z.record(z.string(), agentConfigSchema),
   requestRules: z.array(requestRuleSchema).default([]),
@@ -129,3 +224,8 @@ export type RequestRuleApply = z.infer<typeof requestRuleApplySchema>;
 export type RoutingRule = z.infer<typeof routingRuleSchema>;
 export type RoutingRuleApply = z.infer<typeof routingRuleApplySchema>;
 export type RoutingConfig = z.infer<typeof routingConfigSchema>;
+export type MemoryDefaults = z.infer<typeof memoryDefaultsSchema>;
+export type MemoryRecallConfig = z.infer<typeof memoryRecallSchema>;
+export type MemoryRetainConfig = z.infer<typeof memoryRetainSchema>;
+export type MemoryOperationsConfig = z.infer<typeof memoryOperationsSchema>;
+export type MemoryReflectConfig = z.infer<typeof memoryReflectSchema>;

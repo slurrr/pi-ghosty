@@ -9,7 +9,7 @@
     "dev": "node scripts/dev-pi-extension.mjs",
     "tui": "tsx src/index.ts",
     "dev:runtime": "tsx src/index.ts",
-    "dev:debug": "GHOSTY_DEBUG_ALL=1 tsx src/index.ts",
+    "dev:debug": "GHOSTY_DEBUG_ALL=1 node scripts/dev-pi-extension.mjs",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",

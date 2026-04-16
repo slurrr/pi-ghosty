@@ -30,6 +30,25 @@
         "maxCandidates": 8,
         "model": "default"
       }
+    },
+    "memory": {
+      "recall": {
+        "maxTokens": 2048,
+        "budget": "mid",
+        "tagsMatch": "all",
+        "types": ["observation", "world", "experience"],
+        "maxFacts": 30
+      },
+      "retain": {
+        "context": "pi-ghosty agent session transcript",
+        "async": true,
+        "observationScopes": {
+          "mode": "custom",
+          "includeProjectScope": true,
+          "includeAgentScope": true,
+          "includeSessionScope": false
+        }
+      }
     }
   },
   "modelScopePresets": {
