@@ -1138,8 +1138,14 @@ export default function (pi: any) {
         const mostRecent = [...sessions].sort((a: any, b: any) => +b.modified - +a.modified)[0];
         const sessionPath = mostRecent.path;
         const extPath = fileURLToPath(import.meta.url);
+        const workdirMode = process.env.GHOSTY_WORKDIR_MODE?.trim() || "sandbox";
+        const projectDirEnv = process.env.GHOSTY_PROJECT_DIR?.trim() || projectDir;
+        const trustedPrefix = workdirMode === "trusted" ? `cd ${shellQuote(projectDirEnv)} && ` : "";
         const cmd =
+          `${trustedPrefix}` +
           `GHOSTY_EXTENSION_ACTIVE=1 ` +
+          `GHOSTY_PROJECT_DIR=${shellQuote(projectDirEnv)} ` +
+          `GHOSTY_WORKDIR_MODE=${shellQuote(workdirMode)} ` +
           `GHOSTY_PI_RUN_DIR=${shellQuote(runDir)} ` +
           `GHOSTY_AGENT_CONFIG_PATH=${shellQuote(resolvedConfigPath)} ` +
           `pi --session ${shellQuote(sessionPath)} --session-dir ${shellQuote(peerSessionDir)} -e ${shellQuote(extPath)}`;

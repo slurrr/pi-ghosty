@@ -15,6 +15,14 @@ function envBool(defaultValue: boolean) {
   }, z.boolean().default(defaultValue));
 }
 
+const workdirModeSchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const mode = value.trim().toLowerCase();
+  if (["trusted", "no-sandbox", "nosandbox", "unsafe"].includes(mode)) return "trusted";
+  if (["sandbox", "safe"].includes(mode)) return "sandbox";
+  return value;
+}, z.enum(["sandbox", "trusted"]).default("sandbox"));
+
 const envSchema = z.object({
   PROJECT_TAG: z.string().default("project:pi-ghosty"),
   VLLM_BASE_URL: z.string().url().default("http://localhost:8002/v1"),
@@ -22,6 +30,8 @@ const envSchema = z.object({
   HINDSIGHT_BASE_URL: z.string().url().default("http://localhost:8888"),
   HINDSIGHT_BANK_ID: z.string().default("pi-ghosty"),
 
+  GHOSTY_PROJECT_DIR: z.string().optional(),
+  GHOSTY_WORKDIR_MODE: workdirModeSchema,
   GHOSTY_RUN_DIR: z.string().optional(),
 
   // Feature toggles
@@ -52,4 +62,8 @@ export function resolveRunDir(env: Env): string {
   const configured = env.GHOSTY_RUN_DIR?.trim();
   if (configured) return expandHome(configured);
   return resolve(homedir(), "runs", "pi-ghosty");
+}
+
+export function resolveWorkDir(env: Env, callerCwd: string, projectDir: string): string {
+  return env.GHOSTY_WORKDIR_MODE === "trusted" ? projectDir : callerCwd;
 }

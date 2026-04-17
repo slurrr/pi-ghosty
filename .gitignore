@@ -6,9 +6,9 @@ dist/
 data/
 *.log
 
-peers/*/IDENTITY.md
-peers/*/PERSONA.md
-peers/*/USER.md
-peers/*/memory.md
+*IDENTITY.md
+*PERSONA.md
+*USER.md
+*memory.md
 
 docs/Hindsight*
