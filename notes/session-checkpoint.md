@@ -1,48 +1,31 @@
 # Current Goal
-- Finish and stabilize the `pi-extension-mode` branch so ghosty runs only when explicitly requested, while preserving the recent dual-config and Pi scoped-model work.
+- Implement a stable v1 extension router/catalog base **and** fix “fresh session” startup semantics so a new coordinator session doesn’t inherit surprise scope/model state.
 
 # Current State
-- Branch: `pi-extension-mode`.
-- Recent branch work, in order:
-  - built the Pi extension host (`.pi/extensions/ghosty/index.ts`) with `delegate`, `delegate_batch`, `/ghosty`, `/system`, `/peer open`, tmux peer spawning, routing/catalog enrichment, and per-role tool surfaces.
-  - moved peer coordination behavior into role/system prompt shaping and skills, with loop-breaker protections around missing tools and repeated `peer_report`.
-  - added per-delegation model override, then per-peer default model support and model-constrained routing.
-  - split config handling into runtime (`pi-agent-local.json`) and extension/frontier (`pi-agent-frontier.json`) schemas/loaders, with legacy fallback to `pi-agent.json`.
-  - kept Pi `settings.enabledModels` / scoped-model filtering for ghosty peer model resolution.
-- The session crash/regression was most likely tied to Pi resume or hot reload reloading the project-local extension from `.pi/extensions/ghosty`, causing ghosty behavior to appear in plain `pi` sessions.
-- Recovery work completed locally:
-  - `.pi/extensions/ghosty/index.ts` now exits early unless this exact extension was explicitly requested, or `GHOSTY_EXTENSION_ACTIVE=1` is present for intentional child launches.
-  - spawned peer tmux windows export both `GHOSTY_AGENT_CONFIG_PATH` and `GHOSTY_EXTENSION_ACTIVE=1`.
-  - `scripts/smoke-pi-extension.mjs` exports the same env so smoke runs still exercise ghosty.
-  - active ghosty sessions set a footer status `ghosty: active`.
-  - status output now shows config path plus scoped/enabled model info.
-- Working tree also includes docs/example updates for the dual-config split:
-  - `.env.example`, `README.md`, `pi-agent-frontier.json`, `pi-agent-local.json`, `src/config/loadConfig.ts`, `src/config/schema.ts`.
-- Validation previously passed with frontier config: `npm run typecheck` and `npm run smoke:pi-ext`.
-- Follow-up stabilization direction changed: dual-config is now enforced as a hard split, not a gated mixed-mode path.
-- `pi-agent-local.json` remains the runtime/local-model config (sampling + extraBody allowed there).
-- Ghosty Pi extension now hard-requires frontier config semantics and rejects `pi-agent-local.json` / runtime-only fields at load time instead of trying to gate behavior by provider.
-- One small hardening tweak was added after review: the footer status code now tolerates missing `ctx.ui.theme`.
+- Run root is canonical: `/home/poop/runs/pi-ghosty`.
+- Draft v1 spec exists: `docs/specs/0006-extension-mode-routing-and-catalog-v1.md`.
+- Extension router/catalog implementation work has landed locally (uncommitted):
+  - removed `request.model` from delegation contract (`src/runtime/contracts.ts`)
+  - added per-session mutex + busy-session avoidance + weather/drift enrichment + delta-based semantic refresh + stats enrichment (`.pi/extensions/ghosty/index.ts`)
+  - added `semantic.weather` to catalog schema + merge semantics (`src/runtime/sessionCatalogStore.ts`)
+  - `npm run typecheck` and `npm run smoke:pi-ext` pass
+- Pain point discovered: **new coordinator sessions are not “fresh” by default**; prior preset/scope state can carry over, causing confusing `enabledModels` scope and model selection.
 
 # Decisions
-- Keep the scoped-model / `enabledModels` work from `66ac8b3`; do not roll it back unless a more specific regression is proven.
-- Fix the plain-`pi` contamination at extension activation time instead of reverting branch work.
-- Treat `.pi/extensions/ghosty` auto-discovery as expected Pi behavior; ghosty itself must fail closed unless explicitly launched with `-e .pi/extensions/ghosty/index.ts`.
-- Use a small footer indicator (`ghosty: active`) as the authoritative UI signal that ghosty is actually active.
-- Keep `delegate`, `delegate_batch`, and `peer_report` as the core extension tool contract.
+- Fresh coordinator session behavior should be deterministic and minimal:
+  - On new session start, set active preset to **`hybrid-default`**
+  - Then set coordinator model to the config default for coordinator
+  - **Unless persistence is enabled in config**, in which case we skip and let Pi default behavior take over.
+- Keep the override surface simple (no extra flags/commands for common usage).
 
 # Open Problems
-- The exact upstream Pi resume/hot-reload path that reloaded the project extension during plain `pi` use is still not isolated; current fix is defensive rather than root-causing Pi internals.
-- Need real-world verification that:
-  - plain `pi` from repo root stays vanilla after resume/reload,
-  - explicit ghosty launch still works for coordinator and spawned peers,
-  - scoped-model filtering behaves correctly with dual-config setups.
-- Still need a gap review of what runtime features remain missing from the extension path, but sampling/extraBody are intentionally runtime-only now.
+- Where to implement the “fresh startup semantics” cleanly (launcher script vs extension `before_agent_start`), and how to detect “new session” reliably.
+- Define what “persistence enabled” means in config (single boolean) and how it gates preset/model initialization.
 
 # Resume Instructions
-1. Read this file first, then inspect `git diff -- src/config/loadConfig.ts src/config/schema.ts .pi/extensions/ghosty/index.ts scripts/smoke-pi-extension.mjs`.
-2. Validate dual-config hard split:
-   - `npm run smoke:pi-ext` should pass with frontier config;
-   - `GHOSTY_AGENT_CONFIG_PATH=./pi-agent-local.json npm run smoke:pi-ext` should fail immediately with a clear config error.
-3. Continue the runtime-vs-extension parity review for features that should exist in the extension path without collapsing the dual-config boundary.
-4. Then return to manual plain-`pi` vs explicit-ghosty activation verification if still needed.
+1. Read this checkpoint first.
+2. Confirm working tree status and what’s uncommitted (`git status`).
+3. Implement the fresh startup semantics:
+   - new session => apply `hybrid-default` preset + set coordinator model from config
+   - if persistence enabled => do nothing special
+4. Re-run `npm run typecheck` and `npm run smoke:pi-ext`.

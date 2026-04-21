@@ -24,13 +24,14 @@ import {
   routingDecisionSchema,
 } from "../../../src/runtime/contracts.js";
 import { createPeerReportTool } from "../../../src/runtime/peerReportTool.js";
-import { Semaphore } from "../../../src/runtime/concurrency.js";
+import { KeyedMutex, Semaphore } from "../../../src/runtime/concurrency.js";
 import { SessionCatalogStore, type CatalogEntry } from "../../../src/runtime/sessionCatalogStore.js";
 import { formatSessionName } from "../../../src/runtime/sessionNaming.js";
 import { modelKey, resolveRoutingDefaults } from "../../../src/config/rules.js";
 import { memoryExtensionFactory } from "../../../src/extensions/memoryExtension.js";
 import { roleSystemPromptExtensionFactory } from "../../../src/extensions/roleSystemPromptExtension.js";
 import { samplingExtensionFactory } from "../../../src/extensions/samplingExtension.js";
+import { JsonlTrace } from "../../../src/logging/jsonlTrace.js";
 
 const GHOSTY_PROMPT_MARKER = "GHOSTY_PROMPT_MARKER_v1";
 
@@ -175,9 +176,30 @@ export default function (pi: any) {
 
   const maxParallelDelegations = config.routing.defaults.maxParallelDelegations;
   const delegationSemaphore = new Semaphore(maxParallelDelegations);
+  const sessionMutex = new KeyedMutex();
+  const busySessionIds = new Set<string>();
 
   const catalogStore = new SessionCatalogStore(runDir, config.defaults.projectTag);
   const catalogLoaded = catalogStore.load();
+  const traceBySessionId = new Map<string, JsonlTrace>();
+
+  function getTrace(ctx: any): JsonlTrace {
+    const sid = String(ctx?.sessionManager?.getSessionId?.() ?? "extension");
+    let trace = traceBySessionId.get(sid);
+    if (!trace) {
+      trace = JsonlTrace.forRuntime(runDir, sid);
+      traceBySessionId.set(sid, trace);
+    }
+    return trace;
+  }
+
+  async function traceEvent(ctx: any, event: Record<string, unknown>): Promise<void> {
+    try {
+      await getTrace(ctx).append(event);
+    } catch {
+      // best-effort observability only
+    }
+  }
 
   function inferRoleFromSessionFile(sessionFile: string | null | undefined): string {
     const file = sessionFile ?? "";
@@ -336,11 +358,28 @@ export default function (pi: any) {
     return { systemPrompt: computed };
   });
 
-  async function askJson(prompt: string, ctx: any): Promise<string> {
-    if (!ctx.model) throw new Error("No model selected.");
+  async function resolveRouterModel(ctx: any): Promise<Model<any>> {
+    const routingConfig = resolveRoutingDefaults(config, ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : null);
+    const requested = String(routingConfig.semantic.model || "default").trim();
 
-    const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model);
-    if (!auth?.apiKey) throw new Error(`No API key available for provider ${ctx.model.provider}. Run /login ${ctx.model.provider}.`);
+    if (requested && requested.toLowerCase() !== "default") {
+      const resolved = await resolveModelSpec(requested, ctx);
+      if (resolved) {
+        const model = ctx.modelRegistry.find(resolved.provider, resolved.id);
+        if (model) return model;
+      }
+    }
+
+    if (ctx.model) return ctx.model;
+    throw new Error("No model selected.");
+  }
+
+  async function askJson(prompt: string, ctx: any): Promise<string> {
+    const model = await resolveRouterModel(ctx);
+
+    const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+    const apiKey = auth?.apiKey || (String(model.provider).toLowerCase() === "vllm" ? "dummy" : "");
+    if (!apiKey) throw new Error(`No API key available for provider ${model.provider}. Run /login ${model.provider}.`);
 
     const ac = new AbortController();
     const timeoutMs = 30000;
@@ -348,17 +387,24 @@ export default function (pi: any) {
 
     try {
       const res = await completeSimple(
-        ctx.model,
+        model,
         {
           systemPrompt: "Return strict JSON only.",
           messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
         },
         {
-          apiKey: auth.apiKey,
+          apiKey,
           headers: auth.headers,
           temperature: 0,
           maxTokens: 256,
           signal: ac.signal,
+          onPayload: (payload) => {
+            if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+            const out = { ...(payload as Record<string, unknown>) };
+            out["response_format"] = { type: "json_object" };
+            out["chat_template_kwargs"] = { enable_thinking: false };
+            return out;
+          },
         },
       );
 
@@ -381,12 +427,36 @@ export default function (pi: any) {
     const hasSemantic = !!entry.semantic?.title && !!entry.semantic?.summary && Array.isArray(entry.semantic?.tags);
     const timeStale = !Number.isFinite(last) || now - last > cooldownMs;
 
-    if (hasSemantic && !timeStale) return entry;
+    const basis = entry.semantic?.basis ?? {};
+    const msgNow = entry.stats?.messageCount ?? 0;
+    const toolNow = entry.stats?.toolCalls ?? 0;
+    const compNow = entry.stats?.compactions ?? 0;
+    const msgThen = basis.messageCount ?? 0;
+    const toolThen = basis.toolCalls ?? 0;
+    const compThen = basis.compactions ?? 0;
+
+    const deltaMsgs = msgNow - msgThen;
+    const deltaTools = toolNow - toolThen;
+    const deltaComp = compNow - compThen;
+    const deltaStale = deltaComp >= 1 || deltaMsgs >= 50 || deltaTools >= 15;
+
+    if (hasSemantic && !timeStale && !deltaStale) return entry;
+
+    await traceEvent(ctx, {
+      type: "session_semantic_enrich_start",
+      sessionId: entry.sessionId,
+      peerName: entry.peerName,
+      reason: timeStale ? "cooldown" : "delta",
+      deltaMsgs,
+      deltaTools,
+      deltaComp,
+    });
 
     const prompt = [
       "Return strict JSON only.",
       "You are enriching a session catalog entry for routing.",
-      "Output schema: {\"title\":string,\"summary\":string,\"tags\":string[]}",
+      "Output schema:",
+      '{"title":string,"summary":string,"tags":string[],"weather":{"state":"good|drifting|stale","driftScore":number,"reason":string}}',
       "",
       `peerName: ${entry.peerName}`,
       `projectTag: ${config.defaults.projectTag}`,
@@ -395,15 +465,50 @@ export default function (pi: any) {
       `context: ${request.context || ""}`,
       `expectedOutput: ${request.expectedOutput || ""}`,
       `peerReportSummary: ${reportSummary || ""}`,
+      `currentSummary: ${entry.semantic?.summary || ""}`,
+      `deltaMsgs: ${deltaMsgs}`,
+      `deltaTools: ${deltaTools}`,
+      `deltaCompactions: ${deltaComp}`,
     ].join("\n");
 
-    const raw = await askJson(prompt, ctx);
-    const parsed = safeJsonParse<{ title?: string; summary?: string; tags?: string[] }>(raw);
+    let raw = "";
+    try {
+      raw = await askJson(prompt, ctx);
+    } catch (err: any) {
+      await traceEvent(ctx, {
+        type: "session_semantic_enrich_error",
+        sessionId: entry.sessionId,
+        peerName: entry.peerName,
+        error: err?.message ?? String(err),
+      });
+    }
+
+    const parsed = safeJsonParse<any>(raw);
+    const parsedWeather = parsed?.weather ?? {};
+    const driftScoreRaw = Number(parsedWeather?.driftScore);
+    const driftScore = Number.isFinite(driftScoreRaw) ? Math.max(0, Math.min(1, driftScoreRaw)) : 0;
+    const weatherState = parsedWeather?.state === "stale" || parsedWeather?.state === "drifting" || parsedWeather?.state === "good"
+      ? parsedWeather.state
+      : driftScore >= 0.9
+        ? "stale"
+        : driftScore >= 0.7
+          ? "drifting"
+          : "good";
+
+    let semantic: CatalogEntry["semantic"];
+    let success = false;
 
     if (!parsed?.title || !parsed?.summary || !Array.isArray(parsed.tags)) {
-      // Fallback semantic (still update updatedAt so we don't hammer the LLM).
+      await traceEvent(ctx, {
+        type: "session_semantic_enrich_invalid_json",
+        sessionId: entry.sessionId,
+        peerName: entry.peerName,
+        rawLen: raw.length,
+        rawExcerpt: raw.slice(0, 400),
+      });
+
       const task = String(request.task || "").trim().split("\n")[0] || `${entry.peerName} session`;
-      const fallback: CatalogEntry["semantic"] = {
+      semantic = {
         title: task.slice(0, 120),
         summary: (reportSummary || String(request.context || "") || task).trim().slice(0, 1000),
         tags: [entry.peerName, "fallback"],
@@ -416,29 +521,47 @@ export default function (pi: any) {
           compactions: entry.stats?.compactions,
           lastUsedAt: entry.lastUsedAt,
         },
+        weather: {
+          state: "drifting",
+          driftScore: Math.max(0.7, driftScore),
+          reason: "fallback semantic parse",
+          updatedAt: new Date().toISOString(),
+          authority: { level: "advisory" },
+        },
       };
-      const updated = { ...entry, semantic: fallback };
-      await catalogStore.upsert(entry.peerName, updated);
-      return updated;
+    } else {
+      semantic = {
+        title: String(parsed.title).trim().slice(0, 120),
+        summary: String(parsed.summary).trim().slice(0, 1000),
+        tags: parsed.tags.map((t: string) => String(t).trim()).filter(Boolean).slice(0, 12),
+        updatedAt: new Date().toISOString(),
+        source: "llm",
+        confidence: "normal",
+        basis: {
+          messageCount: entry.stats?.messageCount,
+          toolCalls: entry.stats?.toolCalls,
+          compactions: entry.stats?.compactions,
+          lastUsedAt: entry.lastUsedAt,
+        },
+        weather: {
+          state: weatherState,
+          driftScore,
+          reason: String(parsedWeather?.reason || "advisory").slice(0, 240),
+          updatedAt: new Date().toISOString(),
+          authority: { level: "advisory" },
+        },
+      };
+      success = true;
     }
-
-    const semantic: CatalogEntry["semantic"] = {
-      title: String(parsed.title).trim().slice(0, 120),
-      summary: String(parsed.summary).trim().slice(0, 1000),
-      tags: parsed.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 12),
-      updatedAt: new Date().toISOString(),
-      source: "llm",
-      confidence: "normal",
-      basis: {
-        messageCount: entry.stats?.messageCount,
-        toolCalls: entry.stats?.toolCalls,
-        compactions: entry.stats?.compactions,
-        lastUsedAt: entry.lastUsedAt,
-      },
-    };
 
     const updated = { ...entry, semantic };
     await catalogStore.upsert(entry.peerName, updated);
+    await traceEvent(ctx, {
+      type: "session_semantic_enrich_end",
+      sessionId: entry.sessionId,
+      peerName: entry.peerName,
+      success,
+    });
     return updated;
   }
 
@@ -648,81 +771,98 @@ export default function (pi: any) {
     return null;
   }
 
-  async function routePeerSession(peerName: string, request: any, ctx: any): Promise<{ sessionManager: SessionManager; sessionState: "new" | "resumed"; requiredModel?: { provider: string; id: string } | null }> {
+  async function routePeerSession(
+    peerName: string,
+    request: any,
+    ctx: any,
+  ): Promise<{ sessionManager: SessionManager; sessionState: "new" | "resumed"; routing: { action: "resume" | "new"; reason?: string; confidence?: number } }> {
     const peerSessionDir = resolve(runDir, "data", "sessions", peerName);
     mkdirSync(peerSessionDir, { recursive: true });
 
-    // Model constraint resolution (precedence):
-    // 1) explicit request.model
-    // 2) peer defaultModel from config
-    const peerDefaultModel = (config.agents?.[peerName]?.defaultModel ?? "").trim();
-    const requestedModelRaw = String(request?.model ?? "").trim();
-
-    let requiredModel: { provider: string; id: string } | null = null;
-    if (requestedModelRaw) {
-      requiredModel = await resolveModelSpec(requestedModelRaw, ctx);
-      if (!requiredModel) {
-        throw new Error(
-          `Could not resolve requested model within your scoped models: ${requestedModelRaw}. ` +
-            `Adjust /scoped-models (settings.enabledModels) or request an allowed provider/modelId.`,
-        );
-      }
-    } else if (peerDefaultModel) {
-      // Default model is best-effort: if it's unknown, fall back to normal routing.
-      requiredModel = await resolveModelSpec(peerDefaultModel, ctx);
-    }
-
-    // If we have no sessions yet, continueRecent will create one.
     const infos = await SessionManager.list(ctx.cwd, peerSessionDir);
     if (infos.length === 0) {
-      return { sessionManager: SessionManager.continueRecent(ctx.cwd, peerSessionDir), sessionState: "new", requiredModel };
+      await traceEvent(ctx, { type: "session_route_decision", peerName, action: "new", reason: "no sessions" });
+      return {
+        sessionManager: SessionManager.continueRecent(ctx.cwd, peerSessionDir),
+        sessionState: "new",
+        routing: { action: "new", reason: "no sessions", confidence: 1 },
+      };
     }
 
-    // Build routing candidates from catalog if available.
     await catalogLoaded;
-    const routingConfig = resolveRoutingDefaults(config, requiredModel ?? (ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : null));
+    const routingConfig = resolveRoutingDefaults(config, ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : null);
     const maxCandidates = routingConfig.semantic.maxCandidates ?? 8;
-    let candidates = catalogStore
-      .list(peerName as any)
-      .filter((e) => !e.status?.retired)
-      .sort((a, b) => Date.parse(b.lastUsedAt) - Date.parse(a.lastUsedAt))
+
+    const all = catalogStore.list(peerName as any).filter((e) => !e.status?.retired);
+    const idle = all.filter((e) => !busySessionIds.has(e.sessionId));
+    const base = (idle.length > 0 ? idle : all)
+      .sort((a, b) => {
+        const aCtx = a.stats?.contextPercent ?? 0;
+        const bCtx = b.stats?.contextPercent ?? 0;
+        if (aCtx !== bCtx) return aCtx - bCtx;
+        const aComp = a.stats?.compactions ?? 0;
+        const bComp = b.stats?.compactions ?? 0;
+        if (aComp !== bComp) return aComp - bComp;
+        return Date.parse(b.lastUsedAt) - Date.parse(a.lastUsedAt);
+      })
       .slice(0, maxCandidates);
 
-    // If a model is required, only consider sessions already on that model.
-    if (requiredModel) {
-      const key = modelKey(requiredModel);
-      candidates = candidates.filter((c: any) => modelKey(c.model) === key);
+    const candidates: CatalogEntry[] = [];
+    for (const c of base) {
+      try {
+        candidates.push(await maybeEnrichSemantic(c, request, "", ctx));
+      } catch {
+        candidates.push(c);
+      }
     }
 
-    // If we don't have enough catalog data yet, default to most recent session.
-    if (candidates.length <= 1) {
-      if (requiredModel && candidates.length === 0) {
-        // Hard constraint: no matching sessions -> start a new one.
-        const sm = SessionManager.continueRecent(ctx.cwd, peerSessionDir);
-        sm.newSession();
-        return { sessionManager: sm, sessionState: "new", requiredModel };
-      }
+    await traceEvent(ctx, {
+      type: "session_route_start",
+      peerName,
+      candidateCount: candidates.length,
+      busyCount: all.length - idle.length,
+    });
 
-      const mostRecent = [...infos].sort((a: any, b: any) => +b.modified - +a.modified)[0];
-      return { sessionManager: SessionManager.open(mostRecent.path, peerSessionDir), sessionState: "resumed", requiredModel };
+    if (candidates.length === 0) {
+      const sm = SessionManager.continueRecent(ctx.cwd, peerSessionDir);
+      sm.newSession();
+      await traceEvent(ctx, { type: "session_route_decision", peerName, action: "new", reason: "no catalog candidates" });
+      return { sessionManager: sm, sessionState: "new", routing: { action: "new", reason: "no catalog candidates", confidence: 1 } };
+    }
+
+    if (candidates.length === 1) {
+      const chosen = candidates[0];
+      if (chosen.sessionFile) {
+        await traceEvent(ctx, { type: "session_route_decision", peerName, action: "resume", chosenSessionId: chosen.sessionId, reason: "single candidate" });
+        return {
+          sessionManager: SessionManager.open(chosen.sessionFile, peerSessionDir),
+          sessionState: "resumed",
+          routing: { action: "resume", reason: "single candidate", confidence: 1 },
+        };
+      }
     }
 
     const prompt = [
       "Return strict JSON only.",
-      "You are routing a delegation request to an existing peer session or creating a new one.",
-      "Output schema: {\"action\":\"resume\"|\"new\", \"sessionId\"?:string, \"reason\"?:string, \"confidence\"?:number }",
+      "Choose best session routing action.",
+      "Output schema: {\"action\":\"resume\"|\"new\",\"sessionId\"?:string,\"reason\"?:string,\"confidence\"?:number}",
+      "Rules:",
+      "- Advisory only: weather is for warnings, not hard constraints.",
+      "- Prefer resume if semantic fit is strong and session is not clearly drifting/stale.",
+      "- Choose new if no candidate is a good fit.",
       "",
       `peerName: ${peerName}`,
       `projectTag: ${config.defaults.projectTag}`,
       `task: ${request.task}`,
       `context: ${request.context || ""}`,
-      `requiredModel: ${requiredModel ? modelKey(requiredModel) : "(none)"}`,
       "",
       "Candidates:",
       ...candidates.map((c) => {
         const name = c.sessionName || c.semantic?.title || "(unnamed)";
         const tags = (c.semantic?.tags || []).join(",");
-        return `- sessionId=${c.sessionId} lastUsedAt=${c.lastUsedAt} name=${JSON.stringify(name)} tags=${JSON.stringify(tags)} summary=${JSON.stringify((c.semantic?.summary || "").slice(0, 240))}`;
+        const weather = c.semantic?.weather;
+        const weatherText = weather ? `${weather.state}:${weather.driftScore.toFixed(2)}` : "none";
+        return `- sessionId=${c.sessionId} name=${JSON.stringify(name)} lastUsedAt=${c.lastUsedAt} weather=${weatherText} tags=${JSON.stringify(tags)} summary=${JSON.stringify((c.semantic?.summary || "").slice(0, 240))}`;
       }),
     ].join("\n");
 
@@ -730,25 +870,58 @@ export default function (pi: any) {
       const raw = await askJson(prompt, ctx);
       const parsed = safeJsonParse<any>(raw);
       const decision = routingDecisionSchema.safeParse(parsed);
+      if (decision.success) {
+        if (decision.data.action === "new") {
+          const sm = SessionManager.continueRecent(ctx.cwd, peerSessionDir);
+          sm.newSession();
+          await traceEvent(ctx, {
+            type: "session_route_decision",
+            peerName,
+            action: "new",
+            reason: decision.data.reason,
+            confidence: decision.data.confidence,
+          });
+          return {
+            sessionManager: sm,
+            sessionState: "new",
+            routing: { action: "new", reason: decision.data.reason, confidence: decision.data.confidence },
+          };
+        }
 
-      if (decision.success && decision.data.action === "resume" && decision.data.sessionId) {
-        const chosen = candidates.find((c) => c.sessionId === decision.data.sessionId);
-        if (chosen?.sessionFile) {
-          return { sessionManager: SessionManager.open(chosen.sessionFile, peerSessionDir), sessionState: "resumed", requiredModel };
+        if ((decision.data.action === "resume" || decision.data.action === "compact_then_resume") && decision.data.sessionId) {
+          const chosen = candidates.find((c) => c.sessionId === decision.data.sessionId);
+          if (chosen?.sessionFile) {
+            await traceEvent(ctx, {
+              type: "session_route_decision",
+              peerName,
+              action: "resume",
+              chosenSessionId: chosen.sessionId,
+              reason: decision.data.reason,
+              confidence: decision.data.confidence,
+            });
+            return {
+              sessionManager: SessionManager.open(chosen.sessionFile, peerSessionDir),
+              sessionState: "resumed",
+              routing: {
+                action: "resume",
+                reason: decision.data.reason,
+                confidence: decision.data.confidence,
+              },
+            };
+          }
         }
       }
-
-      if (decision.success && decision.data.action === "new") {
-        const sm = SessionManager.continueRecent(ctx.cwd, peerSessionDir);
-        sm.newSession();
-        return { sessionManager: sm, sessionState: "new", requiredModel };
-      }
-    } catch {
-      // ignore and fall back
+    } catch (err: any) {
+      await traceEvent(ctx, { type: "session_route_error", peerName, error: err?.message ?? String(err) });
     }
 
     const mostRecent = [...infos].sort((a: any, b: any) => +b.modified - +a.modified)[0];
-    return { sessionManager: SessionManager.open(mostRecent.path, peerSessionDir), sessionState: "resumed", requiredModel };
+    await traceEvent(ctx, { type: "session_route_decision", peerName, action: "resume", reason: "fallback most recent" });
+    return {
+      sessionManager: SessionManager.open(mostRecent.path, peerSessionDir),
+      sessionState: "resumed",
+      routing: { action: "resume", reason: "fallback most recent", confidence: 0 },
+    };
   }
 
   async function ensureCatalogEntry(peerName: string, peerSessionManager: SessionManager, ctx: any): Promise<CatalogEntry> {
@@ -808,168 +981,130 @@ export default function (pi: any) {
     }
 
     const parsed = delegateRequestSchema.parse(request);
-
-    const peerSessionDir = resolve(runDir, "data", "sessions", parsed.peerName);
-    const { sessionManager: peerSessionManager, sessionState, requiredModel } = await routePeerSession(parsed.peerName, parsed, ctx);
+    const { sessionManager: peerSessionManager, sessionState, routing } = await routePeerSession(parsed.peerName, parsed, ctx);
     const peerSessionId = peerSessionManager.getSessionId();
 
-    let entry = await ensureCatalogEntry(parsed.peerName, peerSessionManager, ctx);
-
-    const peerParts = loadPeerPromptParts(projectDir, parsed.peerName);
-    const services = await createAgentSessionServices({
-      cwd: ctx.cwd,
-      resourceLoaderOptions: {
-        // Avoid auto-loading extensions from cwd. We only need our role system prompt shaper here.
-        noExtensions: true,
-        extensionFactories: [
-          samplingExtensionFactory(config, parsed.peerName, {
-            runDir,
-            sessionId: peerSessionId,
-            projectTag: config.defaults.projectTag,
-            traceSampling: false,
-          }),
-          ...(memoryDisabled ? [] : [memoryExtensionFactory(memoryEnv, config, parsed.peerName, peerSessionId, { runDir })]),
-          roleSystemPromptExtensionFactory(parsed.peerName),
-        ],
-
-        // Disable AGENTS.md/CLAUDE.md context-file crawling for peers.
-        agentsFilesOverride: (_current) => ({ agentsFiles: [] }),
-
-        appendSystemPrompt: resolve(projectDir, ".pi", "APPEND_SYSTEM.md"),
-        additionalSkillPaths: [resolve(projectDir, ".pi", "skills")],
-        appendSystemPromptOverride: (base) => {
-          const out = [...base];
-          if (peerParts.joined.trim()) out.push(peerParts.joined);
-          return out;
-        },
-      },
-    });
-
-    const { session } = await createAgentSessionFromServices({
-      services,
-      sessionManager: peerSessionManager,
-      // Do not force the coordinator's model; allow peers to keep their own model by default.
-      customTools: [createPeerReportTool()],
-    });
-
-    function isModelUnsupportedError(errMsg: string): boolean {
-      const s = (errMsg || "").toLowerCase();
-      return s.includes("model is not supported") || s.includes("not supported") || s.includes("unsupported");
-    }
-
-    // Apply required model (best-effort) while preventing the session from getting wedged.
-    // NOTE: SessionManager.setModel() will happily persist model_change even if the upstream
-    // later rejects the model. We detect that and revert.
-    let modelSwitched = false;
-    let previousModel: any = session.model;
-
-    if (requiredModel) {
-      const model = ctx.modelRegistry.find(requiredModel.provider, requiredModel.id);
-      if (!model) {
-        throw new Error(`Unknown model: ${modelKey(requiredModel)}. Use /model to see available models.`);
-      }
-
-      if (!ctx.modelRegistry.hasConfiguredAuth(model)) {
-        throw new Error(`No auth configured for model ${modelKey(requiredModel)}. Run /login ${requiredModel.provider} or pick a different model.`);
-      }
-
-      if (!session.model || session.model.provider !== model.provider || session.model.id !== model.id) {
-        await session.setModel(model);
-        modelSwitched = true;
-      }
-    }
-
-    // Enforce per-peer tool surface from extension config.
-    // The peer_report tool is always enabled for peers.
-    const allowedTools = (config.agents?.[parsed.peerName]?.tools ?? []) as string[];
-    session.setActiveToolsByName([...allowedTools, "peer_report"]);
-
-    // Note: model selection is handled via requiredModel routing constraint above.
-
-    const prompt = buildPeerDelegationPrompt(parsed, {
-      projectTag: config.defaults.projectTag,
-      coordinatorSessionId: ctx.sessionManager.getSessionId(),
-      peerSessionId,
-      sessionState,
-    });
-
-    const before = session.messages.length;
-    await session.prompt(prompt, { source: "extension" });
-
-    let newMessages: any[] = session.messages.slice(before);
-
-    // If the prompt failed due to an unsupported model and we switched models, revert and retry once.
-    const lastAssistant = [...newMessages].reverse().find((m) => m?.role === "assistant");
-    const lastError =
-      lastAssistant?.stopReason === "error" && typeof lastAssistant?.errorMessage === "string"
-        ? lastAssistant.errorMessage
-        : "";
-
-    const hasPeerReport = newMessages.some((m) => m?.role === "toolResult" && m?.toolName === "peer_report");
-
-    if (!hasPeerReport && modelSwitched && lastError && isModelUnsupportedError(lastError) && previousModel) {
+    return sessionMutex.runExclusive(peerSessionId, async () => {
+      busySessionIds.add(peerSessionId);
       try {
-        await session.setModel(previousModel);
+        await traceEvent(ctx, {
+          type: "delegate_start",
+          peerName: parsed.peerName,
+          sessionId: peerSessionId,
+          routingAction: routing.action,
+        });
+
+        let entry = await ensureCatalogEntry(parsed.peerName, peerSessionManager, ctx);
+
+        const peerParts = loadPeerPromptParts(projectDir, parsed.peerName);
+        const services = await createAgentSessionServices({
+          cwd: ctx.cwd,
+          resourceLoaderOptions: {
+            noExtensions: true,
+            extensionFactories: [
+              samplingExtensionFactory(config, parsed.peerName, {
+                runDir,
+                sessionId: peerSessionId,
+                projectTag: config.defaults.projectTag,
+                traceSampling: false,
+              }),
+              ...(memoryDisabled ? [] : [memoryExtensionFactory(memoryEnv, config, parsed.peerName, peerSessionId, { runDir })]),
+              roleSystemPromptExtensionFactory(parsed.peerName),
+            ],
+            agentsFilesOverride: (_current) => ({ agentsFiles: [] }),
+            appendSystemPrompt: resolve(projectDir, ".pi", "APPEND_SYSTEM.md"),
+            additionalSkillPaths: [resolve(projectDir, ".pi", "skills")],
+            appendSystemPromptOverride: (base) => {
+              const out = [...base];
+              if (peerParts.joined.trim()) out.push(peerParts.joined);
+              return out;
+            },
+          },
+        });
+
+        const { session } = await createAgentSessionFromServices({
+          services,
+          sessionManager: peerSessionManager,
+          customTools: [createPeerReportTool()],
+        });
+
+        const allowedTools = (config.agents?.[parsed.peerName]?.tools ?? []) as string[];
+        session.setActiveToolsByName([...allowedTools, "peer_report"]);
+
+        const prompt = buildPeerDelegationPrompt(parsed, {
+          projectTag: config.defaults.projectTag,
+          coordinatorSessionId: ctx.sessionManager.getSessionId(),
+          peerSessionId,
+          sessionState,
+        });
+
+        const before = session.messages.length;
         await session.prompt(prompt, { source: "extension" });
-        newMessages = session.messages.slice(before);
-      } catch {
-        // ignore
+        const newMessages: any[] = session.messages.slice(before);
+
+        let output: any | undefined;
+        for (let i = newMessages.length - 1; i >= 0; i--) {
+          const m = newMessages[i];
+          if (m?.role !== "toolResult" || m?.toolName !== "peer_report") continue;
+          const parsedOutput = peerOutputSchema.safeParse(m?.details);
+          if (parsedOutput.success) {
+            output = parsedOutput.data;
+            break;
+          }
+        }
+
+        if (!output) output = { summary: lastAssistantText(session.messages) };
+
+        const stats = session.getSessionStats();
+        const contextUsage: any = session.getContextUsage();
+        const compactionsAfter = peerSessionManager.getEntries().filter((e: any) => e.type === "compaction").length;
+        entry = (await catalogStore.patch(parsed.peerName as any, peerSessionId, {
+          lastUsedAt: new Date().toISOString(),
+          model: session.model ? { provider: session.model.provider, id: session.model.id } : undefined,
+          stats: {
+            messageCount: stats.totalMessages,
+            toolCalls: stats.toolCalls,
+            contextPercent: typeof contextUsage?.percent === "number" ? contextUsage.percent : null,
+            compactions: compactionsAfter,
+          },
+        })) as CatalogEntry;
+
+        let enriched = entry;
+        try {
+          enriched = await maybeEnrichSemantic(entry, parsed, output.summary, ctx);
+        } catch {
+          enriched = entry;
+        }
+
+        try {
+          const title = enriched.semantic?.title || `${parsed.peerName} session`;
+          const desiredName = formatSessionName(parsed.peerName, title);
+          peerSessionManager.appendSessionInfo(desiredName);
+          await catalogStore.patch(parsed.peerName as any, peerSessionId, {
+            sessionName: desiredName,
+          });
+        } catch {
+          // ignore
+        }
+
+        await traceEvent(ctx, {
+          type: "delegate_end",
+          peerName: parsed.peerName,
+          sessionId: peerSessionId,
+          routingAction: routing.action,
+        });
+
+        return {
+          peerName: parsed.peerName,
+          sessionId: peerSessionId,
+          sessionState,
+          output,
+          routing,
+        };
+      } finally {
+        busySessionIds.delete(peerSessionId);
       }
-    }
-
-    let output: any | undefined;
-    for (let i = newMessages.length - 1; i >= 0; i--) {
-      const m = newMessages[i];
-      if (m?.role !== "toolResult" || m?.toolName !== "peer_report") continue;
-      const parsedOutput = peerOutputSchema.safeParse(m?.details);
-      if (parsedOutput.success) {
-        output = parsedOutput.data;
-        break;
-      }
-    }
-
-    if (!output) {
-      output = { summary: lastAssistantText(session.messages) };
-    }
-
-    // Update stats after the turn and opportunistically enrich semantic info.
-    const allEntries = peerSessionManager.getEntries();
-    const messageCountAfter = allEntries.filter((e: any) => e.type === "message").length;
-    const compactionsAfter = allEntries.filter((e: any) => e.type === "compaction").length;
-    entry = (await catalogStore.patch(parsed.peerName as any, peerSessionId, {
-      lastUsedAt: new Date().toISOString(),
-      model: session.model ? { provider: session.model.provider, id: session.model.id } : undefined,
-      stats: {
-        messageCount: messageCountAfter,
-        compactions: compactionsAfter,
-      },
-    })) as CatalogEntry;
-
-    let enriched = entry;
-    try {
-      enriched = await maybeEnrichSemantic(entry, parsed, output.summary, ctx);
-    } catch {
-      enriched = entry;
-    }
-
-    // Always try to set a deterministic session display name.
-    try {
-      const title = enriched.semantic?.title || `${parsed.peerName} session`;
-      const desiredName = formatSessionName(parsed.peerName, title);
-      peerSessionManager.appendSessionInfo(desiredName);
-      await catalogStore.patch(parsed.peerName as any, peerSessionId, {
-        sessionName: desiredName,
-      });
-    } catch {
-      // ignore
-    }
-
-    return {
-      peerName: parsed.peerName,
-      sessionId: peerSessionId,
-      sessionState,
-      output,
-    };
+    });
   }
 
   async function delegateOnceBounded(request: any, ctx: any) {
@@ -988,6 +1123,7 @@ export default function (pi: any) {
         const modelScope = await getAllowedModels(ctx);
         const enabledPatternsText = modelScope.patterns.length > 0 ? modelScope.patterns.join(", ") : "none";
 
+        const routingDefaults = resolveRoutingDefaults(config, ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : null);
         const lines = [
           "ghosty status",
           `runDir: ${runDir}`,
@@ -995,6 +1131,8 @@ export default function (pi: any) {
           `configPath: ${resolvedConfigPath}`,
           `enabledModels: ${enabledPatternsText}`,
           `allowedModels: ${modelScope.allowed.length}`,
+          `routing.semantic.model: ${routingDefaults.semantic.model}`,
+          `busySessions: ${busySessionIds.size}`,
           `catalog: coder=${counts.coder}, researcher=${counts.researcher}, reviewer=${counts.reviewer}, memory=${counts.memory}`,
           "peer session dirs:",
         ];
@@ -1059,9 +1197,6 @@ export default function (pi: any) {
             peerName: "researcher",
             task: "Call peer_report with summary exactly: smoke test ok",
             expectedOutput: "A peer_report response with summary exactly: smoke test ok",
-            // Force the coordinator's current model for smoke so we don't get stuck
-            // resuming a peer session wedged on an unsupported model.
-            model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
           },
           ctx,
         );
@@ -1208,7 +1343,6 @@ export default function (pi: any) {
         task: Type.String({ minLength: 1 }),
         context: Type.Optional(Type.String()),
         expectedOutput: Type.Optional(Type.String()),
-        model: Type.Optional(Type.String({ minLength: 1 })),
       }),
       execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
         const result = await delegateOnceBounded(params, ctx);
@@ -1237,7 +1371,6 @@ export default function (pi: any) {
             task: Type.String({ minLength: 1 }),
             context: Type.Optional(Type.String()),
             expectedOutput: Type.Optional(Type.String()),
-            model: Type.Optional(Type.String({ minLength: 1 })),
           }),
           { minItems: 1 },
         ),

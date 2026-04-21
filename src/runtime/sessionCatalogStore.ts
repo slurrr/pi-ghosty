@@ -51,6 +51,17 @@ export interface CatalogEntry {
       compactions?: number;
       lastUsedAt?: string;
     };
+
+    // Advisory-only in v1; bounded LLM-owned drift metadata.
+    weather?: {
+      state: "good" | "drifting" | "stale";
+      driftScore: number; // 0..1
+      reason: string;
+      updatedAt: string;
+      authority: {
+        level: "advisory";
+      };
+    };
   };
 }
 
@@ -128,7 +139,12 @@ export class SessionCatalogStore {
       stats: { ...(entry.stats ?? {}), ...(patch.stats ?? {}) },
       health: { ...(entry.health ?? {}), ...(patch.health ?? {}) },
       status: { ...(entry.status ?? {}), ...(patch.status ?? {}) },
-      semantic: { ...(entry.semantic ?? {}), ...(patch.semantic ?? {}) } as CatalogEntry["semantic"],
+      semantic: {
+        ...(entry.semantic ?? {}),
+        ...(patch.semantic ?? {}),
+        basis: { ...(entry.semantic?.basis ?? {}), ...(patch.semantic?.basis ?? {}) },
+        weather: { ...(entry.semantic?.weather ?? {}), ...(patch.semantic?.weather ?? {}) } as any,
+      } as CatalogEntry["semantic"],
     };
     await this.upsert(peerName, merged);
     return merged;
