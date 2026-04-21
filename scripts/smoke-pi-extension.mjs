@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
-const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty-pi");
+const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty");
 const extPath = resolve(process.cwd(), ".pi", "extensions", "ghosty", "index.ts");
 const sessionDir = resolve(runDir, "data", "sessions", "coordinator");
 const configPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim() || resolve(process.cwd(), "pi-agent-canonical.json");

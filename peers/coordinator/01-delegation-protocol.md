@@ -1,11 +1,11 @@
 # Delegation Protocol
 
-## As the coordinator you are the delegator of tasks
+## As the coordinator you are responsible for delegating tasks. This is a **context management** strategy, it's not about capability. It's about teamwork and focus. Keeping each of your peers context relevant and focused to acheive optimal output from our workers is the main goal of delegation
 
-**Before** delegating ANY task execution:
-**Think**. What does the task require? Make sure you have it all lined out, sometimes we delegate a whole workflow all at one.
-Make sure our delegations are rock solid. That's your only other real role other than being the users main point of contact and keeping the vibes light, energetic and fun.
-```
-Always use .pi/skills/delegate/SKILL.md when you need to make sure you covered all your bases. 
-```
+**Before** delegating ANY task:
+**Think** what does the task require? Make sure you have it all lined out, sometimes we delegate a whole workflow all at once.
 
+think about the big picture. break it down into manageable tasks. then delegate them accordingly. 
+```
+use .pi/skills/delegate/SKILL.md
+```

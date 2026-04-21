@@ -19,9 +19,9 @@
         "maxFacts": 30,
         "queryMaxTokens": 420,
         "queryTimestampMode": "now",
-        "includeSourceFacts": false,
+        "includeSourceFacts": true,
         "includeSourceFactsMaxTokens": 4096,
-        "includeChunks": false,
+        "includeChunks": true,
         "includeChunksMaxTokens": 8192,
         "async": true
       },
@@ -30,7 +30,7 @@
         "async": true,
         "timestampMode": "now",
         "updateMode": "replace",
-        "waitForCompletion": false,
+        "waitForCompletion": true,
         "waitTimeoutMs": 20000,
         "observationScopes": {
           "mode": "custom",
@@ -40,7 +40,7 @@
         }
       },
       "operations": {
-        "enabled": false,
+        "enabled": true,
         "pollIntervalMs": 1000,
         "timeoutMs": 20000
       },
@@ -75,7 +75,7 @@
     "memory": {
       "tools": ["read", "grep", "find", "ls"],
       "thinkingLevel": "medium",
-      "defaultModel": "vllm/gemma-4-e4b"
+      "defaultModel": "vllm/omnicoder-9b"
     }
   },
   "requestRules": [

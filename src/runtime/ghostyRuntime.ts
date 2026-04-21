@@ -4,7 +4,7 @@ import type { Env } from "../env.js";
 import type { GhostyConfig } from "../config/schema.js";
 import { createGhostySession } from "../pi/createSession.js";
 import { ArtifactStore } from "../artifacts/store.js";
-import { JsonlTrace } from "../logging/jsonlTrace.js";
+import { JsonlTrace, legacyTraceMetadata } from "../logging/jsonlTrace.js";
 import {
   buildPeerDelegationPrompt,
   delegateBatchRequestSchema,
@@ -128,7 +128,9 @@ export class GhostyRuntime {
       modelFallbackMessage,
     } as SessionHandle;
 
-    const trace = JsonlTrace.forRuntime(runDir, coordinator.sessionId);
+    const trace = JsonlTrace.forRuntime(runDir, coordinator.sessionId, {
+      defaultMetadata: legacyTraceMetadata({ traceScope: "runtime" }),
+    });
     const artifacts = ArtifactStore.forProject(runDir, config.defaults.projectTag);
 
     const runtime = new GhostyRuntime(projectDir, workDir, runDir, env, config, coordinator, trace, artifacts);

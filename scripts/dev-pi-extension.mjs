@@ -15,7 +15,7 @@ const rawMode = process.env.GHOSTY_WORKDIR_MODE?.trim().toLowerCase();
 const workdirMode = ["trusted", "no-sandbox", "nosandbox", "unsafe"].includes(rawMode || "") ? "trusted" : "sandbox";
 const launchCwd = workdirMode === "trusted" ? projectDir : callerCwd;
 
-const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty-pi");
+const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty");
 const extPath = resolve(projectDir, ".pi", "extensions", "ghosty", "index.ts");
 const configPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim() || resolve(projectDir, "pi-agent-canonical.json");
 

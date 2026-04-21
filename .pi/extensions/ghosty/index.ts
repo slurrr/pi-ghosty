@@ -28,6 +28,7 @@ import { Semaphore } from "../../../src/runtime/concurrency.js";
 import { SessionCatalogStore, type CatalogEntry } from "../../../src/runtime/sessionCatalogStore.js";
 import { formatSessionName } from "../../../src/runtime/sessionNaming.js";
 import { modelKey, resolveRoutingDefaults } from "../../../src/config/rules.js";
+import { memoryExtensionFactory } from "../../../src/extensions/memoryExtension.js";
 import { roleSystemPromptExtensionFactory } from "../../../src/extensions/roleSystemPromptExtension.js";
 import { samplingExtensionFactory } from "../../../src/extensions/samplingExtension.js";
 
@@ -162,7 +163,7 @@ export default function (pi: any) {
   const rawConfigPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim() || "./pi-agent-canonical.json";
   const resolvedConfigPath = resolve(projectDir, rawConfigPath);
   const config = loadConfigFromFile(resolvedConfigPath);
-  const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty-pi");
+  const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty");
   const appendSystemPath = resolve(projectDir, ".pi", "APPEND_SYSTEM.md");
 
   samplingExtensionFactory(config, "coordinator", {
@@ -237,7 +238,20 @@ export default function (pi: any) {
     .join("\n\n")
     .trim();
 
+  const memoryEnv = process.env as any;
+  const memoryDisabled = (() => {
+    const raw = String(process.env.GHOSTY_DISABLE_MEMORY ?? "").trim().toLowerCase();
+    return ["1", "true", "yes", "y", "on"].includes(raw);
+  })();
+
   let activeRole = "coordinator";
+  const wiredMemorySessions = new Set<string>();
+
+  function wireMemoryExtension(role: string, sessionId: string, piInstance: any) {
+    if (wiredMemorySessions.has(sessionId)) return;
+    memoryExtensionFactory(memoryEnv, config, role, sessionId, { runDir })(piInstance);
+    wiredMemorySessions.add(sessionId);
+  }
 
   // Ensure coordinator does NOT get write/edit/bash unless explicitly allowed.
   // Also ensures peer sessions opened via /peer open get their configured surfaces.
@@ -245,6 +259,10 @@ export default function (pi: any) {
     const role = inferRoleFromSessionFile(ctx?.sessionManager?.getSessionFile?.());
     activeRole = role;
     applyToolSurface(role);
+    const sessionId = ctx?.sessionManager?.getSessionId?.();
+    if (sessionId && role === "coordinator" && !memoryDisabled) {
+      wireMemoryExtension(role, sessionId, pi);
+    }
     const ghostyStatus = ctx.ui?.theme?.fg?.("accent", "ghosty: active") ?? "ghosty: active";
     ctx.ui?.setStatus?.("ghosty", ghostyStatus);
   });
@@ -810,6 +828,7 @@ export default function (pi: any) {
             projectTag: config.defaults.projectTag,
             traceSampling: false,
           }),
+          ...(memoryDisabled ? [] : [memoryExtensionFactory(memoryEnv, config, parsed.peerName, peerSessionId, { runDir })]),
           roleSystemPromptExtensionFactory(parsed.peerName),
         ],
 

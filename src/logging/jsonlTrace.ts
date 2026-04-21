@@ -4,11 +4,20 @@ import { basename, dirname, resolve } from "node:path";
 export interface JsonlTraceOptions {
   maxBytes?: number;
   maxFiles?: number;
+  defaultMetadata?: Record<string, unknown>;
+}
+
+export function legacyTraceMetadata(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    runtimeMode: "legacy",
+    ...extra,
+  };
 }
 
 export class JsonlTrace {
   private readonly maxBytes: number;
   private readonly maxFiles: number;
+  private readonly defaultMetadata: Record<string, unknown>;
 
   constructor(
     private readonly filePath: string,
@@ -16,20 +25,21 @@ export class JsonlTrace {
   ) {
     this.maxBytes = options.maxBytes ?? 5_000_000;
     this.maxFiles = options.maxFiles ?? 5;
+    this.defaultMetadata = options.defaultMetadata ?? {};
   }
 
-  static forAgent(runDir: string, agentName: string, sessionId: string): JsonlTrace {
-    return new JsonlTrace(resolve(runDir, "data", "traces", agentName, `${sessionId}.jsonl`));
+  static forAgent(runDir: string, agentName: string, sessionId: string, options: JsonlTraceOptions = {}): JsonlTrace {
+    return new JsonlTrace(resolve(runDir, "data", "traces", agentName, `${sessionId}.jsonl`), options);
   }
 
-  static forRuntime(runDir: string, sessionId: string): JsonlTrace {
-    return new JsonlTrace(resolve(runDir, "data", "traces", "runtime", `${sessionId}.jsonl`));
+  static forRuntime(runDir: string, sessionId: string, options: JsonlTraceOptions = {}): JsonlTrace {
+    return new JsonlTrace(resolve(runDir, "data", "traces", "runtime", `${sessionId}.jsonl`), options);
   }
 
   async append(event: Record<string, unknown>): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
     await this.rotateIfNeeded();
-    const line = `${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`;
+    const line = `${JSON.stringify({ ts: new Date().toISOString(), ...this.defaultMetadata, ...event })}\n`;
     await appendFile(this.filePath, line, "utf-8");
   }
 

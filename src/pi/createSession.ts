@@ -30,7 +30,7 @@ import { systemPromptTraceExtensionFactory } from "../extensions/systemPromptTra
 import { samplingExtensionFactory } from "../extensions/samplingExtension.js";
 import { peerToolsExtensionFactory } from "../extensions/peerToolsExtension.js";
 import { loopBreakerExtensionFactory } from "../extensions/loopBreakerExtension.js";
-import { JsonlTrace } from "../logging/jsonlTrace.js";
+import { JsonlTrace, legacyTraceMetadata } from "../logging/jsonlTrace.js";
 import type { GhostyConfig } from "../config/schema.js";
 import type { Env } from "../env.js";
 import { loadPeerPromptParts } from "../prompts/loadPeerPromptParts.js";
@@ -193,7 +193,9 @@ export async function createGhostySession(args: CreateGhostySessionArgs) {
   const allowedTools = config.agents[agentName]?.tools ?? [];
   session.setActiveToolsByName([...allowedTools, ...internalAllowedTools]);
 
-  const agentTrace = JsonlTrace.forAgent(runDir, agentName, sessionId);
+  const agentTrace = JsonlTrace.forAgent(runDir, agentName, sessionId, {
+    defaultMetadata: legacyTraceMetadata({ traceScope: "agent" }),
+  });
   if (debugAll || env.GHOSTY_DEBUG_TOOL_SURFACE) {
     await agentTrace.append({
       type: "tool_surface",
