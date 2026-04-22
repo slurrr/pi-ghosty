@@ -1,3 +1,26 @@
+memory
+
+directly list the extracted facts and the consolidated observations via the HTTP API:              
+                                                                                                                 
+ 1) list raw extracted facts (world/experience)                                                                  
+                                                                                                                 
+ ```bash                                                                                                         
+   curl -sS 'http://localhost:8888/v1/default/banks/pi-ghosty/memories/list?limit=20&offset=0'                   
+ ```                                                                                                             
+                                                                                                                 
+ 2) list just consolidated observations (this is the heavy part)                                                 
+                                                                                                                 
+ ```bash                                                                                                         
+   curl -sS 'http://localhost:8888/v1/default/banks/pi-ghosty/observations?limit=20&offset=0'                    
+ ```                                                                                                             
+                                                                                                                 
+ 3) sanity check per-document growth (are we exploding memory units?)                                            
+                                                                                                                 
+ ```bash                                                                                                         
+   curl -sS 'http://localhost:8888/v1/default/banks/pi-ghosty/documents?limit=50&offset=0'                       
+ ```                                                                                                             
+     
+
 map config
 
 rg -n "agents\\[|tools\\b|projectTag|hindsight|vllm" pi-agent.json src/config src/pi/createSession.ts 

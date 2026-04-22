@@ -49,6 +49,15 @@
           "includeSessionScope": false
         }
       }
+    },
+    "workflowMonitor": {
+      "enabled": true,
+      "heartbeatMs": 900000,
+      "reviewCadenceMs": 86400000,
+      "lookbackHours": 72,
+      "candidateThreshold": 2,
+      "winnerThreshold": 6,
+      "surfaceTopN": 5
     }
   },
   "modelScopePresets": {

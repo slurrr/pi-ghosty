@@ -1,31 +1,28 @@
 # Current Goal
-- Implement a stable v1 extension router/catalog base **and** fix “fresh session” startup semantics so a new coordinator session doesn’t inherit surprise scope/model state.
+- Make pi-ghosty useful day to day by automatically monitoring workflow friction/wins and surfacing screened candidates/winners on a heartbeat.
 
 # Current State
-- Run root is canonical: `/home/poop/runs/pi-ghosty`.
-- Draft v1 spec exists: `docs/specs/0006-extension-mode-routing-and-catalog-v1.md`.
-- Extension router/catalog implementation work has landed locally (uncommitted):
-  - removed `request.model` from delegation contract (`src/runtime/contracts.ts`)
-  - added per-session mutex + busy-session avoidance + weather/drift enrichment + delta-based semantic refresh + stats enrichment (`.pi/extensions/ghosty/index.ts`)
-  - added `semantic.weather` to catalog schema + merge semantics (`src/runtime/sessionCatalogStore.ts`)
-  - `npm run typecheck` and `npm run smoke:pi-ext` pass
-- Pain point discovered: **new coordinator sessions are not “fresh” by default**; prior preset/scope state can carry over, causing confusing `enabledModels` scope and model selection.
+- Workflow monitor is implemented for the extension path and peer tools path using `src/workflow/workflowMonitor.ts`.
+- The monitor scans `runDir/data/traces/**`, scores repeatable pain/win signals, and writes durable summaries under `runDir/data/workflow/`.
+- The coordinator path now hooks the monitor on `session_start` and heartbeat-style input events in `.pi/extensions/ghosty/index.ts`.
+- `/ghosty workflow` was added in the extension path, and `/peer workflow` shows the latest summary.
+- Config/schema now includes workflow monitor defaults, and canonical/example configs were updated.
+- `npm run typecheck` passes.
+- `npm run smoke:pi-ext` passes.
+- Added a delegation postmortem at `docs/reference/delegation_postmortem.md` covering prompt visibility, coordinator injection timing, durable report gaps, and peer overruns.
 
 # Decisions
-- Fresh coordinator session behavior should be deterministic and minimal:
-  - On new session start, set active preset to **`hybrid-default`**
-  - Then set coordinator model to the config default for coordinator
-  - **Unless persistence is enabled in config**, in which case we skip and let Pi default behavior take over.
-- Keep the override surface simple (no extra flags/commands for common usage).
+- Use deterministic, rule-based screening first; no LLM analysis loop for the workflow monitor v1.
+- Keep raw capture append-only and store review snapshots as JSON under `runDir/data/workflow/`.
+- Surface only screened candidates/winners to the user; keep everything else parked in background artifacts.
+- Keep the workflow monitor best-effort and non-blocking.
 
 # Open Problems
-- Where to implement the “fresh startup semantics” cleanly (launcher script vs extension `before_agent_start`), and how to detect “new session” reliably.
-- Define what “persistence enabled” means in config (single boolean) and how it gates preset/model initialization.
+- Decide whether to delete or consolidate the now-unused `src/runtime/workflowMonitor.ts` path later.
+- Decide whether to unify the runtime and extension workflow-monitor implementations/configs, or keep them separate.
+- Decide whether to add a small README/doc note for the new workflow command.
 
 # Resume Instructions
-1. Read this checkpoint first.
-2. Confirm working tree status and what’s uncommitted (`git status`).
-3. Implement the fresh startup semantics:
-   - new session => apply `hybrid-default` preset + set coordinator model from config
-   - if persistence enabled => do nothing special
-4. Re-run `npm run typecheck` and `npm run smoke:pi-ext`.
+1. If continuing workflow work, inspect `src/workflow/workflowMonitor.ts`, `.pi/extensions/ghosty/index.ts`, and `src/extensions/peerToolsExtension.ts` first.
+2. Re-run `npm run typecheck` and `npm run smoke:pi-ext` after any workflow-monitor edits.
+3. If simplifying the repo, consolidate or remove the unused runtime workflow-monitor file next.

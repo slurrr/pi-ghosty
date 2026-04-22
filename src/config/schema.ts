@@ -117,6 +117,16 @@ export const memoryDefaultsSchema = z.object({
   }),
 });
 
+export const workflowMonitorSchema = z.object({
+  enabled: z.boolean().default(true),
+  heartbeatMs: z.number().int().positive().default(15 * 60 * 1000),
+  reviewCadenceMs: z.number().int().positive().default(24 * 60 * 60 * 1000),
+  lookbackHours: z.number().int().positive().default(72),
+  candidateThreshold: z.number().int().positive().default(2),
+  winnerThreshold: z.number().int().positive().default(6),
+  surfaceTopN: z.number().int().positive().default(5),
+});
+
 export const agentConfigSchema = z.object({
   tools: z.array(z.string()).default([]),
   thinkingLevel: thinkingLevelSchema.default("off"),
@@ -203,11 +213,17 @@ export const routingConfigSchema = z.object({
   budgetGuards: budgetGuardsSchema.default({}),
 });
 
+export const persistenceDefaultsSchema = z.object({
+  enabled: z.boolean().default(false),
+});
+
 export const ghostyConfigSchema = z.object({
   defaults: z.object({
     projectTag: z.string().min(1),
     runtime: runtimeDefaultsSchema.optional(),
     memory: memoryDefaultsSchema.default(memoryDefaultsSchema.parse({})),
+    workflowMonitor: workflowMonitorSchema.default(workflowMonitorSchema.parse({})),
+    persistence: persistenceDefaultsSchema.default(persistenceDefaultsSchema.parse({})),
   }),
   agents: z.record(z.string(), agentConfigSchema),
   requestRules: z.array(requestRuleSchema).default([]),
@@ -229,3 +245,5 @@ export type MemoryRecallConfig = z.infer<typeof memoryRecallSchema>;
 export type MemoryRetainConfig = z.infer<typeof memoryRetainSchema>;
 export type MemoryOperationsConfig = z.infer<typeof memoryOperationsSchema>;
 export type MemoryReflectConfig = z.infer<typeof memoryReflectSchema>;
+export type WorkflowMonitorConfig = z.infer<typeof workflowMonitorSchema>;
+export type PersistenceDefaults = z.infer<typeof persistenceDefaultsSchema>;

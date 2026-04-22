@@ -1,0 +1,10 @@
+{
+  "enabledModels": [
+    "openai-codex/gpt-5.2",
+    "openai-codex/gpt-5.3-codex",
+    "openai-codex/gpt-5.4",
+    "openai-codex/gpt-5.4-mini",
+    "vllm/omnicoder-9b",
+    "vllm/gemma-4-e4b"
+  ]
+}

@@ -6,11 +6,15 @@ export class Semaphore {
     this.permits = Math.max(1, permits);
   }
 
+  tryAcquire(): (() => void) | null {
+    if (this.permits <= 0) return null;
+    this.permits -= 1;
+    return () => this.release();
+  }
+
   async acquire(): Promise<() => void> {
-    if (this.permits > 0) {
-      this.permits -= 1;
-      return () => this.release();
-    }
+    const release = this.tryAcquire();
+    if (release) return release;
 
     await new Promise<void>((resolve) => this.queue.push(resolve));
     this.permits -= 1;

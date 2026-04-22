@@ -10,6 +10,9 @@
         "maxTokens": 8192
       }
     },
+    "persistence": {
+      "enabled": false
+    },
     "memory": {
       "recall": {
         "maxTokens": 2048,
@@ -30,7 +33,7 @@
         "async": true,
         "timestampMode": "now",
         "updateMode": "replace",
-        "waitForCompletion": true,
+        "waitForCompletion": false,
         "waitTimeoutMs": 20000,
         "observationScopes": {
           "mode": "custom",
@@ -49,12 +52,21 @@
         "mode": "manual",
         "budget": "low"
       }
+    },
+    "workflowMonitor": {
+      "enabled": true,
+      "heartbeatMs": 120000,
+      "reviewCadenceMs": 900000,
+      "lookbackHours": 72,
+      "candidateThreshold": 2,
+      "winnerThreshold": 6,
+      "surfaceTopN": 5
     }
   },
   "agents": {
     "coordinator": {
-      "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch", "edit", "bash"],
-      "thinkingLevel": "low",
+      "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch", "edit", "bash", "write"],
+      "thinkingLevel": "medium",
       "defaultModel": "openai-codex/gpt-5.4-mini"
     },
     "coder": {
@@ -114,15 +126,15 @@
       },
       "apply": {
         "sampling": {
-          "temperature": 1.1,
+          "temperature": 0.69,
           "topP": 1.0,
           "topK": -1,
           "minP": 0.05,
-          "presencePenalty": 0.9
+          "presencePenalty": 0.69
         },
         "extra_body": {
           "chat_template_kwargs": {
-            "enable_thinking": false
+            "enable_thinking": true
           }
         }
       }
@@ -141,7 +153,7 @@
         },
         "extra_body": {
           "chat_template_kwargs": {
-            "enable_thinking": false
+            "enable_thinking": true
           }
         }
       }

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -13,6 +14,7 @@ import {
 import { completeSimple } from "@mariozechner/pi-ai";
 import type { Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
+import { Text } from "@mariozechner/pi-tui";
 import { loadConfigFromFile } from "../../../src/config/loadConfig.js";
 import { loadPeerPromptParts } from "../../../src/prompts/loadPeerPromptParts.js";
 import {
@@ -22,16 +24,21 @@ import {
   ghostyPeerNames,
   peerOutputSchema,
   routingDecisionSchema,
+  type DelegationLaunch,
+  type DelegationReport,
 } from "../../../src/runtime/contracts.js";
+import { delegationReportPath, delegationReportTitle, writeDelegationReport } from "../../../src/runtime/delegationReports.js";
 import { createPeerReportTool } from "../../../src/runtime/peerReportTool.js";
 import { KeyedMutex, Semaphore } from "../../../src/runtime/concurrency.js";
 import { SessionCatalogStore, type CatalogEntry } from "../../../src/runtime/sessionCatalogStore.js";
 import { formatSessionName } from "../../../src/runtime/sessionNaming.js";
 import { modelKey, resolveRoutingDefaults } from "../../../src/config/rules.js";
+import { resolveProjectPresetEnabledModels, setProjectEnabledModels } from "../../../src/config/projectSettings.js";
 import { memoryExtensionFactory } from "../../../src/extensions/memoryExtension.js";
 import { roleSystemPromptExtensionFactory } from "../../../src/extensions/roleSystemPromptExtension.js";
 import { samplingExtensionFactory } from "../../../src/extensions/samplingExtension.js";
 import { JsonlTrace } from "../../../src/logging/jsonlTrace.js";
+import { WorkflowMonitor } from "../../../src/runtime/workflowMonitor.js";
 
 const GHOSTY_PROMPT_MARKER = "GHOSTY_PROMPT_MARKER_v1";
 
@@ -166,6 +173,7 @@ export default function (pi: any) {
   const config = loadConfigFromFile(resolvedConfigPath);
   const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty");
   const appendSystemPath = resolve(projectDir, ".pi", "APPEND_SYSTEM.md");
+  const workflowMonitor = new WorkflowMonitor(runDir, config.defaults.workflowMonitor);
 
   samplingExtensionFactory(config, "coordinator", {
     runDir,
@@ -180,6 +188,152 @@ export default function (pi: any) {
   const busySessionIds = new Set<string>();
 
   const catalogStore = new SessionCatalogStore(runDir, config.defaults.projectTag);
+  const pendingDelegations = new Map<string, any>();
+  const delegationMessageRendererType = "ghosty-peer-report";
+
+  function reportTitle(peerName: string, jobId: string): string {
+    return delegationReportTitle(peerName, jobId);
+  }
+
+  function reportPath(peerName: string, jobId: string, completedAt: string): string {
+    return delegationReportPath(runDir, { peerName: peerName as any, jobId, completedAt });
+  }
+
+  function formatLaunchMessage(launch: DelegationLaunch): string {
+    return [
+      `Launched ${launch.title}`,
+      `peerName: ${launch.peerName}`,
+      `jobId: ${launch.jobId}`,
+      `sessionId: ${launch.sessionId}`,
+      `sessionState: ${launch.sessionState}`,
+      `routing: ${launch.routing ? `${launch.routing.action}${launch.routing.reason ? ` (${launch.routing.reason})` : ""}` : "none"}`,
+      "",
+      "Delegation message:",
+      launch.delegationMessage,
+    ].join("\n");
+  }
+
+  function formatReportMessage(report: DelegationReport): string {
+    const lines = [
+      `Peer report ${report.title}`,
+      `peerName: ${report.peerName}`,
+      `jobId: ${report.jobId}`,
+      `sessionId: ${report.peerSessionId}`,
+      `sessionState: ${report.sessionState}`,
+      `reportSource: ${report.reportSource}`,
+      `reportPath: ${report.reportPath}`,
+      "",
+      "Summary:",
+      report.output.summary,
+    ];
+    if (Array.isArray(report.output.findings) && report.output.findings.length > 0) {
+      lines.push("", "Findings:", ...report.output.findings.map((f) => `- ${f}`));
+    }
+    if (Array.isArray(report.output.next_actions) && report.output.next_actions.length > 0) {
+      lines.push("", "Next actions:", ...report.output.next_actions.map((n) => `- ${n}`));
+    }
+    if (Array.isArray(report.output.artifacts) && report.output.artifacts.length > 0) {
+      lines.push("", "Artifacts:", ...report.output.artifacts.map((a) => `- ${a}`));
+    }
+    if (report.rawText?.trim()) {
+      lines.push("", "Raw text:", report.rawText.trim());
+    }
+    lines.push("", "Delegation message:", report.delegationMessage);
+    return lines.join("\n");
+  }
+
+  function ensureTraceForSession(sessionId: string): JsonlTrace {
+    let trace = traceBySessionId.get(sessionId);
+    if (!trace) {
+      trace = JsonlTrace.forRuntime(runDir, sessionId);
+      traceBySessionId.set(sessionId, trace);
+    }
+    return trace;
+  }
+
+  async function traceEventForSession(sessionId: string, event: Record<string, unknown>): Promise<void> {
+    try {
+      await ensureTraceForSession(sessionId).append(event);
+    } catch {
+      // best-effort observability only
+    }
+  }
+
+  function registerPendingDelegation(job: {
+    launch: DelegationLaunch;
+    coordinatorSessionId: string;
+    peerSessionId: string;
+    peerSessionManager: SessionManager;
+    request: any;
+    prompt: string;
+    release: () => void;
+    settle: (report: DelegationReport) => void;
+    fail: (error: Error) => void;
+  }): void {
+    pendingDelegations.set(job.launch.jobId, {
+      launch: job.launch,
+      coordinatorSessionId: job.coordinatorSessionId,
+      peerSessionId: job.peerSessionId,
+      peerSessionManager: job.peerSessionManager,
+      request: job.request,
+      prompt: job.prompt,
+      release: job.release,
+      settled: false,
+      completion: Promise.resolve(undefined as unknown as DelegationReport),
+      resolve: job.settle,
+      reject: job.fail,
+    });
+  }
+
+  function getPendingDelegation(jobId: string) {
+    return pendingDelegations.get(jobId);
+  }
+
+  function settleDelegation(jobId: string): boolean {
+    const pending = pendingDelegations.get(jobId);
+    if (!pending || pending.settled) return false;
+    pending.settled = true;
+    pending.release();
+    pendingDelegations.delete(jobId);
+    return true;
+  }
+
+  pi.registerMessageRenderer(delegationMessageRendererType, (message: any, options: any, theme: any) => {
+    const details = message?.details as DelegationReport | undefined;
+    const expanded = !!options?.expanded;
+    if (!details) {
+      return new Text(theme.fg("error", "ghosty-peer-report: missing details"), 0, 0);
+    }
+
+    let text = theme.fg("toolTitle", theme.bold("peer_report ")) + theme.fg("accent", `@${details.peerName}`) + theme.fg("dim", ` job:${details.jobId}`);
+    text += "\n" + theme.fg("success", details.output.summary);
+
+    if (expanded) {
+      text += "\n" + theme.fg("dim", `sessionId: ${details.peerSessionId}`);
+      text += "\n" + theme.fg("dim", `sessionState: ${details.sessionState}`);
+      text += "\n" + theme.fg("dim", `reportSource: ${details.reportSource}`);
+      text += "\n" + theme.fg("dim", `reportPath: ${details.reportPath}`);
+      if (Array.isArray(details.output.findings) && details.output.findings.length > 0) {
+        text += "\n\n" + theme.fg("accent", "Findings");
+        for (const finding of details.output.findings) text += "\n" + theme.fg("dim", `- ${finding}`);
+      }
+      if (Array.isArray(details.output.next_actions) && details.output.next_actions.length > 0) {
+        text += "\n\n" + theme.fg("accent", "Next actions");
+        for (const action of details.output.next_actions) text += "\n" + theme.fg("dim", `- ${action}`);
+      }
+      if (Array.isArray(details.output.artifacts) && details.output.artifacts.length > 0) {
+        text += "\n\n" + theme.fg("accent", "Artifacts");
+        for (const artifact of details.output.artifacts) text += "\n" + theme.fg("dim", `- ${artifact}`);
+      }
+      if (details.rawText?.trim()) {
+        text += "\n\n" + theme.fg("warning", "Raw peer text") + "\n" + theme.fg("dim", details.rawText.trim());
+      }
+      text += "\n\n" + theme.fg("accent", "Delegation message") + "\n" + theme.fg("text", details.delegationMessage.trim());
+    }
+
+    return new Text(text, 0, 0);
+  });
+
   const catalogLoaded = catalogStore.load();
   const traceBySessionId = new Map<string, JsonlTrace>();
 
@@ -199,6 +353,38 @@ export default function (pi: any) {
     } catch {
       // best-effort observability only
     }
+  }
+
+  async function runWorkflowMonitor(reason: string, options?: { force?: boolean }): Promise<void> {
+    const enabled = config.defaults.workflowMonitor?.enabled ?? false;
+    if (!enabled) return;
+    try {
+      if (options?.force) {
+        await workflowMonitor.run(reason);
+      } else {
+        await workflowMonitor.maybeRun(reason);
+      }
+    } catch {
+      // best-effort only
+    }
+  }
+
+  async function renderWorkflowStatus(limit = 5): Promise<string> {
+    const latest = await WorkflowMonitor.readLatest(runDir);
+    if (!latest) return "ghosty workflow: no summary yet";
+    const top = latest.topScreened.slice(0, Math.max(1, limit));
+    const lines = [
+      "ghosty workflow",
+      `updatedAt: ${latest.ts}`,
+      `window: ${latest.windowStart} -> ${latest.windowEnd}`,
+      `scanned: reports=${latest.scanned.reports}, traceEvents=${latest.scanned.traceEvents}`,
+      `screened: winners=${latest.counts.winner}, candidates=${latest.counts.candidate}, parked=${latest.counts.parked}`,
+      "top:",
+      ...(top.length > 0
+        ? top.map((c) => `- ${c.status} ${c.peerName} score=${c.score} wins=${c.wins} frictions=${c.frictions} id=${c.id}`)
+        : ["- none"]),
+    ];
+    return lines.join("\n");
   }
 
   function inferRoleFromSessionFile(sessionFile: string | null | undefined): string {
@@ -277,7 +463,7 @@ export default function (pi: any) {
 
   // Ensure coordinator does NOT get write/edit/bash unless explicitly allowed.
   // Also ensures peer sessions opened via /peer open get their configured surfaces.
-  pi.on?.("session_start", async (_event: any, ctx: any) => {
+  pi.on?.("session_start", async (event: any, ctx: any) => {
     const role = inferRoleFromSessionFile(ctx?.sessionManager?.getSessionFile?.());
     activeRole = role;
     applyToolSurface(role);
@@ -285,8 +471,56 @@ export default function (pi: any) {
     if (sessionId && role === "coordinator" && !memoryDisabled) {
       wireMemoryExtension(role, sessionId, pi);
     }
+    const startReason = String(event?.reason ?? "");
+    const isFreshSessionStart = startReason === "startup" || startReason === "new" || startReason === "fork";
+
+    // Apply fresh-start defaults only for new coordinator sessions.
+    // Resumed sessions must keep the previously selected model.
+    if (sessionId && role === "coordinator" && isFreshSessionStart) {
+      const persistenceEnabled = config.defaults?.persistence?.enabled ?? false;
+      if (!persistenceEnabled) {
+        // Apply hybrid-default preset
+        const presets = getModelScopePresets();
+        const hybridDefaultFallback = presets["hybrid-default"] ?? ["openai-codex/*", "vllm/\*"];
+        const hybridDefaultPatterns = resolveProjectPresetEnabledModels(projectDir, "hybrid-default", hybridDefaultFallback);
+        try {
+          setProjectEnabledModels(projectDir, hybridDefaultPatterns);
+        } catch (err: any) {
+          ctx.ui?.notify?.(`ghosty: failed to write project enabledModels: ${err?.message ?? String(err)}`, "warning");
+        }
+
+        // Set coordinator default model from config and apply it to the current session.
+        const coordinatorDefaultModel = config.agents?.coordinator?.defaultModel;
+        if (coordinatorDefaultModel) {
+          const resolved = await resolveModelSpec(coordinatorDefaultModel, ctx);
+          if (resolved) {
+            const model = ctx.modelRegistry?.find?.(resolved.provider, resolved.id);
+            if (model) {
+              const success = await pi.setModel(model);
+              if (!success) {
+                ctx.ui?.notify?.(`ghosty: could not set coordinator model ${coordinatorDefaultModel}`, "warning");
+              }
+            }
+          }
+        }
+
+        const coordinatorThinkingLevel = config.agents?.coordinator?.thinkingLevel ?? "off";
+        pi.setThinkingLevel(coordinatorThinkingLevel as any);
+      }
+    }
+    if (sessionId && role === "coordinator") {
+      void runWorkflowMonitor("session_start");
+    }
+
     const ghostyStatus = ctx.ui?.theme?.fg?.("accent", "ghosty: active") ?? "ghosty: active";
     ctx.ui?.setStatus?.("ghosty", ghostyStatus);
+  });
+
+  pi.on?.("input", async (_event: any, ctx: any) => {
+    const role = inferRoleFromSessionFile(ctx?.sessionManager?.getSessionFile?.());
+    if (role !== "coordinator") return undefined;
+    void runWorkflowMonitor("heartbeat_input");
+    return undefined;
   });
 
   function computeGhostySystemPrompt(systemPrompt: string, role: string): string {
@@ -975,144 +1209,290 @@ export default function (pi: any) {
     return entry;
   }
 
-  async function delegateOnce(request: any, ctx: any) {
+  async function launchDelegation(request: any, ctx: any): Promise<{ launch: DelegationLaunch; completion: Promise<DelegationReport> }> {
     if (!ctx.model) {
       throw new Error("No model selected. Use /model to choose one, or /login if provider auth is required.");
     }
 
     const parsed = delegateRequestSchema.parse(request);
+    const coordinatorSessionId = String(ctx.sessionManager.getSessionId?.() ?? "coordinator");
     const { sessionManager: peerSessionManager, sessionState, routing } = await routePeerSession(parsed.peerName, parsed, ctx);
     const peerSessionId = peerSessionManager.getSessionId();
+    const jobId = randomUUID();
+    const launchedAt = new Date().toISOString();
+    const title = reportTitle(parsed.peerName, jobId);
+    const delegationMessage = buildPeerDelegationPrompt(parsed, {
+      projectTag: config.defaults.projectTag,
+      coordinatorSessionId,
+      peerSessionId,
+      sessionState,
+      jobId,
+    });
 
-    return sessionMutex.runExclusive(peerSessionId, async () => {
+    const launch: DelegationLaunch = {
+      title,
+      peerName: parsed.peerName,
+      jobId,
+      sessionId: peerSessionId,
+      sessionState,
+      delegationMessage,
+      routing,
+      launchedAt,
+    };
+
+    const release = delegationSemaphore.tryAcquire();
+    if (!release) {
+      throw new Error(`Too many active delegations (max ${maxParallelDelegations}). Try again after one finishes.`);
+    }
+
+    try {
+      return await sessionMutex.runExclusive(peerSessionId, async () => {
+      if (busySessionIds.has(peerSessionId)) {
+        throw new Error(`Peer session ${peerSessionId} is already busy`);
+      }
+
       busySessionIds.add(peerSessionId);
-      try {
-        await traceEvent(ctx, {
-          type: "delegate_start",
-          peerName: parsed.peerName,
-          sessionId: peerSessionId,
-          routingAction: routing.action,
-        });
+      let entry = await ensureCatalogEntry(parsed.peerName, peerSessionManager, ctx);
 
-        let entry = await ensureCatalogEntry(parsed.peerName, peerSessionManager, ctx);
-
-        const peerParts = loadPeerPromptParts(projectDir, parsed.peerName);
-        const services = await createAgentSessionServices({
-          cwd: ctx.cwd,
-          resourceLoaderOptions: {
-            noExtensions: true,
-            extensionFactories: [
-              samplingExtensionFactory(config, parsed.peerName, {
-                runDir,
-                sessionId: peerSessionId,
-                projectTag: config.defaults.projectTag,
-                traceSampling: false,
-              }),
-              ...(memoryDisabled ? [] : [memoryExtensionFactory(memoryEnv, config, parsed.peerName, peerSessionId, { runDir })]),
-              roleSystemPromptExtensionFactory(parsed.peerName),
-            ],
-            agentsFilesOverride: (_current) => ({ agentsFiles: [] }),
-            appendSystemPrompt: resolve(projectDir, ".pi", "APPEND_SYSTEM.md"),
-            additionalSkillPaths: [resolve(projectDir, ".pi", "skills")],
-            appendSystemPromptOverride: (base) => {
-              const out = [...base];
-              if (peerParts.joined.trim()) out.push(peerParts.joined);
-              return out;
-            },
+      const peerParts = loadPeerPromptParts(projectDir, parsed.peerName);
+      const services = await createAgentSessionServices({
+        cwd: ctx.cwd,
+        resourceLoaderOptions: {
+          noExtensions: true,
+          extensionFactories: [
+            samplingExtensionFactory(config, parsed.peerName, {
+              runDir,
+              sessionId: peerSessionId,
+              projectTag: config.defaults.projectTag,
+              traceSampling: false,
+            }),
+            ...(memoryDisabled ? [] : [memoryExtensionFactory(memoryEnv, config, parsed.peerName, peerSessionId, { runDir })]),
+            roleSystemPromptExtensionFactory(parsed.peerName),
+          ],
+          agentsFilesOverride: (_current) => ({ agentsFiles: [] }),
+          appendSystemPrompt: resolve(projectDir, ".pi", "APPEND_SYSTEM.md"),
+          additionalSkillPaths: [resolve(projectDir, ".pi", "skills")],
+          appendSystemPromptOverride: (base) => {
+            const out = [...base];
+            if (peerParts.joined.trim()) out.push(peerParts.joined);
+            return out;
           },
-        });
+        },
+      });
 
-        const { session } = await createAgentSessionFromServices({
-          services,
-          sessionManager: peerSessionManager,
-          customTools: [createPeerReportTool()],
-        });
+      const { session } = await createAgentSessionFromServices({
+        services,
+        sessionManager: peerSessionManager,
+        customTools: [
+          createPeerReportTool(async (output) => {
+            const pending = pendingDelegations.get(jobId);
+            if (!pending?.finalize) return;
+            await pending.finalize(output, "tool");
+          }),
+        ],
+      });
 
-        const allowedTools = (config.agents?.[parsed.peerName]?.tools ?? []) as string[];
-        session.setActiveToolsByName([...allowedTools, "peer_report"]);
+      const allowedTools = (config.agents?.[parsed.peerName]?.tools ?? []) as string[];
+      session.setActiveToolsByName([...allowedTools, "peer_report"]);
 
-        const prompt = buildPeerDelegationPrompt(parsed, {
-          projectTag: config.defaults.projectTag,
-          coordinatorSessionId: ctx.sessionManager.getSessionId(),
+      const before = session.messages.length;
+
+      let resolveCompletion!: (report: DelegationReport) => void;
+      let rejectCompletion!: (error: Error) => void;
+      const completion = new Promise<DelegationReport>((resolve, reject) => {
+        resolveCompletion = resolve;
+        rejectCompletion = reject;
+      });
+
+      const finalize = async (output: PeerOutput, reportSource: "tool" | "text", rawText?: string): Promise<DelegationReport> => {
+        const pending = pendingDelegations.get(jobId);
+        if (!pending) return completion;
+        if (pending.settled) return completion;
+        pending.settled = true;
+
+        const completedAt = new Date().toISOString();
+        let report: DelegationReport = {
+          ...launch,
+          coordinatorSessionId,
           peerSessionId,
-          sessionState,
-        });
-
-        const before = session.messages.length;
-        await session.prompt(prompt, { source: "extension" });
-        const newMessages: any[] = session.messages.slice(before);
-
-        let output: any | undefined;
-        for (let i = newMessages.length - 1; i >= 0; i--) {
-          const m = newMessages[i];
-          if (m?.role !== "toolResult" || m?.toolName !== "peer_report") continue;
-          const parsedOutput = peerOutputSchema.safeParse(m?.details);
-          if (parsedOutput.success) {
-            output = parsedOutput.data;
-            break;
-          }
-        }
-
-        if (!output) output = { summary: lastAssistantText(session.messages) };
-
-        const stats = session.getSessionStats();
-        const contextUsage: any = session.getContextUsage();
-        const compactionsAfter = peerSessionManager.getEntries().filter((e: any) => e.type === "compaction").length;
-        entry = (await catalogStore.patch(parsed.peerName as any, peerSessionId, {
-          lastUsedAt: new Date().toISOString(),
-          model: session.model ? { provider: session.model.provider, id: session.model.id } : undefined,
-          stats: {
-            messageCount: stats.totalMessages,
-            toolCalls: stats.toolCalls,
-            contextPercent: typeof contextUsage?.percent === "number" ? contextUsage.percent : null,
-            compactions: compactionsAfter,
-          },
-        })) as CatalogEntry;
-
-        let enriched = entry;
-        try {
-          enriched = await maybeEnrichSemantic(entry, parsed, output.summary, ctx);
-        } catch {
-          enriched = entry;
-        }
+          reportSource,
+          rawText,
+          output,
+          reportPath: reportPath(parsed.peerName, jobId, completedAt),
+          completedAt,
+        };
 
         try {
-          const title = enriched.semantic?.title || `${parsed.peerName} session`;
-          const desiredName = formatSessionName(parsed.peerName, title);
-          peerSessionManager.appendSessionInfo(desiredName);
-          await catalogStore.patch(parsed.peerName as any, peerSessionId, {
-            sessionName: desiredName,
+          report.reportPath = writeDelegationReport(runDir, report);
+        } catch (err: any) {
+          await traceEventForSession(coordinatorSessionId, {
+            type: "delegate_report_write_error",
+            peerName: parsed.peerName,
+            jobId,
+            error: err?.message ?? String(err),
           });
-        } catch {
-          // ignore
         }
 
-        await traceEvent(ctx, {
+        try {
+          const stats = session.getSessionStats();
+          const contextUsage: any = session.getContextUsage();
+          const compactionsAfter = peerSessionManager.getEntries().filter((e: any) => e.type === "compaction").length;
+          entry = (await catalogStore.patch(parsed.peerName as any, peerSessionId, {
+            lastUsedAt: new Date().toISOString(),
+            model: session.model ? { provider: session.model.provider, id: session.model.id } : undefined,
+            stats: {
+              messageCount: stats.totalMessages,
+              toolCalls: stats.toolCalls,
+              contextPercent: typeof contextUsage?.percent === "number" ? contextUsage.percent : null,
+              compactions: compactionsAfter,
+            },
+          })) as CatalogEntry;
+
+          let enriched = entry;
+          try {
+            enriched = await maybeEnrichSemantic(entry, parsed, output.summary, ctx);
+          } catch {
+            enriched = entry;
+          }
+
+          try {
+            const title = enriched.semantic?.title || `${parsed.peerName} session`;
+            const desiredName = formatSessionName(parsed.peerName, title);
+            peerSessionManager.appendSessionInfo(desiredName);
+            await catalogStore.patch(parsed.peerName as any, peerSessionId, {
+              sessionName: desiredName,
+            });
+          } catch {
+            // ignore
+          }
+        } catch (err: any) {
+          await traceEventForSession(coordinatorSessionId, {
+            type: "delegate_postprocess_error",
+            peerName: parsed.peerName,
+            jobId,
+            error: err?.message ?? String(err),
+          });
+        }
+
+        await traceEventForSession(coordinatorSessionId, {
           type: "delegate_end",
           peerName: parsed.peerName,
           sessionId: peerSessionId,
+          jobId,
           routingAction: routing.action,
+          reportSource,
         });
 
-        return {
-          peerName: parsed.peerName,
-          sessionId: peerSessionId,
-          sessionState,
-          output,
-          routing,
-        };
-      } finally {
-        busySessionIds.delete(peerSessionId);
-      }
+        try {
+          pi.sendMessage(
+            {
+              customType: delegationMessageRendererType,
+              content: formatReportMessage(report),
+              display: true,
+              details: report,
+            },
+            { triggerTurn: true, deliverAs: "followUp" },
+          );
+        } catch (err: any) {
+          await traceEventForSession(coordinatorSessionId, {
+            type: "delegate_report_injection_error",
+            peerName: parsed.peerName,
+            jobId,
+            error: err?.message ?? String(err),
+          });
+        }
+
+        try {
+          pending.resolve(report);
+        } finally {
+          busySessionIds.delete(peerSessionId);
+          release();
+          pendingDelegations.delete(jobId);
+        }
+
+        return report;
+      };
+
+      const pending = {
+        launch,
+        coordinatorSessionId,
+        peerSessionId,
+        peerSessionManager,
+        request: parsed,
+        prompt: delegationMessage,
+        release,
+        settled: false,
+        completion,
+        resolve: resolveCompletion,
+        reject: rejectCompletion,
+        finalize,
+      };
+      pendingDelegations.set(jobId, pending);
+
+      await traceEvent(ctx, {
+        type: "delegate_start",
+        peerName: parsed.peerName,
+        sessionId: peerSessionId,
+        jobId,
+        routingAction: routing.action,
+      });
+
+      const promptPromise = session.prompt(delegationMessage, { source: "extension" });
+      promptPromise
+        .then(async () => {
+          const current = pendingDelegations.get(jobId);
+          if (!current || current.settled) return;
+
+          const newMessages: any[] = session.messages.slice(before);
+          let output: PeerOutput | undefined;
+          let reportSource: "tool" | "text" = "text";
+          for (let i = newMessages.length - 1; i >= 0; i--) {
+            const m = newMessages[i];
+            if (m?.role !== "toolResult" || m?.toolName !== "peer_report") continue;
+            const parsedOutput = peerOutputSchema.safeParse(m?.details);
+            if (parsedOutput.success) {
+              output = parsedOutput.data;
+              reportSource = "tool";
+              break;
+            }
+          }
+
+          if (!output) {
+            output = { summary: lastAssistantText(session.messages) };
+          }
+
+          await current.finalize(output, reportSource);
+        })
+        .catch(async (err: any) => {
+          const current = pendingDelegations.get(jobId);
+          if (!current || current.settled) return;
+          const message = err?.message ?? String(err);
+          await current.finalize({ summary: `delegation failed: ${message}` }, "text", message);
+        });
+
+      return {
+        launch,
+        completion,
+      };
     });
+    } catch (err) {
+      busySessionIds.delete(peerSessionId);
+      release();
+      throw err;
+    }
+  }
+
+  async function delegateOnce(request: any, ctx: any) {
+    const result = await launchDelegation(request, ctx);
+    return result.launch;
   }
 
   async function delegateOnceBounded(request: any, ctx: any) {
-    return delegationSemaphore.withPermit(() => delegateOnce(request, ctx));
+    return launchDelegation(request, ctx);
   }
 
   pi.registerCommand("ghosty", {
-    description: "Ghosty extension utilities. Subcommands: status, models, smoke, system, peer",
+    description: "Ghosty extension utilities. Subcommands: status, models, workflow, smoke, system, peer",
     handler: async (args: string, ctx: any) => {
       const parts = args.trim().split(/\s+/).filter(Boolean);
       const subcommand = (parts[0] || "status").toLowerCase();
@@ -1124,6 +1504,7 @@ export default function (pi: any) {
         const enabledPatternsText = modelScope.patterns.length > 0 ? modelScope.patterns.join(", ") : "none";
 
         const routingDefaults = resolveRoutingDefaults(config, ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : null);
+        const workflowLatest = await WorkflowMonitor.readLatest(runDir);
         const lines = [
           "ghosty status",
           `runDir: ${runDir}`,
@@ -1132,6 +1513,8 @@ export default function (pi: any) {
           `enabledModels: ${enabledPatternsText}`,
           `allowedModels: ${modelScope.allowed.length}`,
           `routing.semantic.model: ${routingDefaults.semantic.model}`,
+          `workflowMonitor: ${config.defaults.workflowMonitor.enabled ? "on" : "off"}`,
+          `workflowTop: ${workflowLatest ? `winners=${workflowLatest.counts.winner}, candidates=${workflowLatest.counts.candidate}` : "none"}`,
           `busySessions: ${busySessionIds.size}`,
           `catalog: coder=${counts.coder}, researcher=${counts.researcher}, reviewer=${counts.reviewer}, memory=${counts.memory}`,
           "peer session dirs:",
@@ -1176,10 +1559,17 @@ export default function (pi: any) {
             return;
           }
 
-          const settings = SettingsManager.create(ctx.cwd);
-          settings.setEnabledModels(patterns);
-          await settings.flush();
-          const text = `Applied preset ${presetName}: ${patterns.join(", ") || "none"}`;
+          const resolvedPatterns = resolveProjectPresetEnabledModels(projectDir, presetName, patterns);
+
+          try {
+            setProjectEnabledModels(projectDir, resolvedPatterns);
+          } catch (err: any) {
+            const msg = `ghosty: failed to write project enabledModels: ${err?.message ?? String(err)}`;
+            if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+            else process.stdout.write(`${msg}\n`);
+            return;
+          }
+          const text = `Applied preset ${presetName}: ${resolvedPatterns.join(", ") || "none"}`;
           if (ctx.hasUI) ctx.ui.notify(text, "info");
           else process.stdout.write(`${text}\n`);
           return;
@@ -1191,8 +1581,18 @@ export default function (pi: any) {
         return;
       }
 
+      if (subcommand === "workflow") {
+        const limitRaw = Number(parts[1]);
+        const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(20, Math.trunc(limitRaw)) : 5;
+        await runWorkflowMonitor("command_workflow", { force: true });
+        const text = await renderWorkflowStatus(limit);
+        if (ctx.hasUI) ctx.ui.notify(text, "info");
+        else process.stdout.write(`${text}\n`);
+        return;
+      }
+
       if (subcommand === "smoke") {
-        const result = await delegateOnce(
+        const { completion } = await launchDelegation(
           {
             peerName: "researcher",
             task: "Call peer_report with summary exactly: smoke test ok",
@@ -1200,6 +1600,7 @@ export default function (pi: any) {
           },
           ctx,
         );
+        const result = await completion;
 
         const text = `ghosty smoke: ${result.output.summary}`;
         if (ctx.hasUI) ctx.ui.notify(text, "info");
@@ -1321,7 +1722,7 @@ export default function (pi: any) {
         return;
       }
 
-      const msg = `Unknown subcommand: ${subcommand}. Try: /ghosty status, /ghosty models, /ghosty smoke, /ghosty system, or /ghosty peer`;
+      const msg = `Unknown subcommand: ${subcommand}. Try: /ghosty status, /ghosty models, /ghosty workflow, /ghosty smoke, /ghosty system, or /ghosty peer`;
       if (ctx.hasUI) ctx.ui.notify(msg, "warning");
       else process.stdout.write(`${msg}\n`);
     },
@@ -1332,7 +1733,7 @@ export default function (pi: any) {
     defineTool({
       name: "delegate",
       label: "Delegate Task",
-      description: "Delegate work to a specialist peer and return a structured summary.",
+      description: "Delegate work to a specialist peer and launch it without blocking the coordinator.",
       parameters: Type.Object({
         peerName: Type.Union([
           Type.Literal("coder"),
@@ -1344,11 +1745,53 @@ export default function (pi: any) {
         context: Type.Optional(Type.String()),
         expectedOutput: Type.Optional(Type.String()),
       }),
+      renderCall: (args, theme, context) => {
+        const peerName = String((args as any)?.peerName ?? "?");
+        const task = String((args as any)?.task ?? "").trim();
+        const firstLine = task.split("\n")[0] ?? "";
+
+        let text = theme.fg("toolTitle", theme.bold("delegate "));
+        text += theme.fg("accent", `@${peerName}`);
+        if (firstLine) text += theme.fg("muted", " — ") + theme.fg("text", firstLine);
+
+        if (!context.expanded) return new Text(text, 0, 0);
+
+        const ctxText = String((args as any)?.context ?? "").trim();
+        const expected = String((args as any)?.expectedOutput ?? "").trim();
+
+        if (task) text += "\n\n" + theme.fg("accent", "Task") + "\n" + theme.fg("text", task);
+        if (ctxText) text += "\n\n" + theme.fg("accent", "Context") + "\n" + theme.fg("text", ctxText);
+        if (expected) text += "\n\n" + theme.fg("accent", "Expected Output") + "\n" + theme.fg("text", expected);
+
+        return new Text(text, 0, 0);
+      },
+      renderResult: (result, { expanded, isPartial }, theme) => {
+        if (isPartial) return new Text(theme.fg("warning", "Launching..."), 0, 0);
+
+        const details = result.details as DelegationLaunch | undefined;
+        if (!details) return new Text(theme.fg("error", "delegate: missing launch details"), 0, 0);
+
+        let text = theme.fg("success", `${details.title} launched`);
+        text += "\n" + theme.fg("dim", `peerName: @${details.peerName}`);
+        text += "\n" + theme.fg("dim", `jobId: ${details.jobId}`);
+        text += "\n" + theme.fg("dim", `sessionId: ${details.sessionId}`);
+        text += "\n" + theme.fg("dim", `sessionState: ${details.sessionState}`);
+        if (details.routing) {
+          text += "\n" + theme.fg("dim", `routing: ${details.routing.action}${details.routing.reason ? ` (${details.routing.reason})` : ""}`);
+        }
+        text += "\n" + theme.fg("warning", "Peer launched; completion will arrive asynchronously.");
+
+        if (expanded) {
+          text += "\n\n" + theme.fg("accent", "Delegation message") + "\n" + theme.fg("text", details.delegationMessage);
+        }
+
+        return new Text(text, 0, 0);
+      },
       execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
         const result = await delegateOnceBounded(params, ctx);
         return {
-          content: [{ type: "text", text: result.output.summary }],
-          details: result,
+          content: [{ type: "text", text: formatLaunchMessage(result.launch) }],
+          details: result.launch,
         };
       },
     }),
@@ -1358,7 +1801,7 @@ export default function (pi: any) {
     defineTool({
       name: "delegate_batch",
       label: "Delegate Batch",
-      description: "Delegate multiple requests to specialist peers with bounded concurrency.",
+      description: "Delegate multiple requests to specialist peers and launch them without blocking.",
       parameters: Type.Object({
         requests: Type.Array(
           Type.Object({
@@ -1375,32 +1818,69 @@ export default function (pi: any) {
           { minItems: 1 },
         ),
       }),
+      renderCall: (args, theme, context) => {
+        const requests = Array.isArray((args as any)?.requests) ? (args as any).requests : [];
+        const labels = requests.map((req: any, index: number) => `#${index + 1} @${String(req?.peerName ?? "?")}`).join(", ");
+        let text = theme.fg("toolTitle", theme.bold("delegate_batch ")) + theme.fg("accent", labels || "none");
+        if (!context.expanded) return new Text(text, 0, 0);
+
+        for (const [index, req] of requests.entries()) {
+          const task = String(req?.task ?? "").trim();
+          const ctxText = String(req?.context ?? "").trim();
+          const expected = String(req?.expectedOutput ?? "").trim();
+          text += `\n\n${theme.fg("accent", `Request ${index + 1}`)}`;
+          text += `\n${theme.fg("dim", `peer: @${String(req?.peerName ?? "?")}`)}`;
+          if (task) text += `\n${theme.fg("text", task)}`;
+          if (ctxText) text += `\n\n${theme.fg("dim", "Context")}` + `\n${theme.fg("text", ctxText)}`;
+          if (expected) text += `\n\n${theme.fg("dim", "Expected Output")}` + `\n${theme.fg("text", expected)}`;
+        }
+        return new Text(text, 0, 0);
+      },
+      renderResult: (result, { expanded, isPartial }, theme) => {
+        if (isPartial) return new Text(theme.fg("warning", "Launching batch..."), 0, 0);
+        const launches = Array.isArray(result.details) ? (result.details as DelegationLaunch[]) : [];
+        if (launches.length === 0) return new Text(theme.fg("error", "delegate_batch: missing launch details"), 0, 0);
+
+        let text = theme.fg("success", `${launches.length} delegation${launches.length === 1 ? "" : "s"} launched`);
+        for (const launch of launches) {
+          text += `\n` + theme.fg("dim", `@${launch.peerName} job:${launch.jobId} session:${launch.sessionId}`);
+        }
+
+        if (expanded) {
+          for (const launch of launches) {
+            text += `\n\n${theme.fg("accent", launch.title)}`;
+            text += `\n${theme.fg("text", launch.delegationMessage)}`;
+          }
+        }
+
+        return new Text(text, 0, 0);
+      },
       execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
         const parsed = delegateBatchRequestSchema.safeParse(params);
         if (!parsed.success) {
           throw new Error(`Invalid delegate_batch request: ${parsed.error.message}`);
         }
 
-        // Partial failures are returned as result objects with an error summary.
-        const settled = await Promise.allSettled(
-          parsed.data.requests.map((r) => delegateOnceBounded(r, ctx)),
-        );
-
-        const results = settled.map((s, i) => {
-          if (s.status === "fulfilled") return s.value;
+        const settled = await Promise.allSettled(parsed.data.requests.map((r) => delegateOnceBounded(r, ctx)));
+        const launches = settled.map((s, i) => {
+          if (s.status === "fulfilled") return s.value.launch;
           const peerName = parsed.data.requests[i]?.peerName ?? "researcher";
+          const jobId = `error-${i + 1}`;
           return {
+            title: reportTitle(peerName, jobId),
             peerName,
+            jobId,
             sessionId: "(error)",
             sessionState: "new" as const,
-            output: { summary: `delegate_batch error: ${String((s.reason as any)?.message ?? s.reason)}` },
-          };
+            delegationMessage: `delegate_batch error while launching request ${i + 1}`,
+            routing: undefined,
+            launchedAt: new Date().toISOString(),
+          } satisfies DelegationLaunch;
         });
 
-        const summary = results.map((r) => `@${r.peerName}: ${r.output.summary}`).join("\n");
         return {
-          content: [{ type: "text", text: summary || "ok" }],
-          details: results,
+          content: [{ type: "text", text: launches.map((launch) => formatLaunchMessage(launch)).join("\n\n---\n\n") || "ok" }],
+          details: launches,
         };
       },
     }),

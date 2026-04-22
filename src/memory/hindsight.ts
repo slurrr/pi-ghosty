@@ -50,7 +50,9 @@ export function createHindsightClient(cfg: HindsightConfig): HindsightClient {
 }
 
 export async function retainMemoriesDirect(baseUrl: string, bankId: string, body: RetainMemoryRequest): Promise<any> {
-  const url = `${trimTrailingSlash(baseUrl)}/v1/default/banks/${encodeURIComponent(bankId)}/retain`;
+  // Hindsight 0.4.x retains via POST /v1/default/banks/{bank_id}/memories
+  // (older/internal docs sometimes refer to /retain, which 404s on current server).
+  const url = `${trimTrailingSlash(baseUrl)}/v1/default/banks/${encodeURIComponent(bankId)}/memories`;
   const response = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },

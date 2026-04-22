@@ -23,6 +23,7 @@ import { SessionCatalogStore, type CatalogEntry, type PeerName } from "./session
 import { SessionPool } from "./sessionPool.js";
 import { Router } from "./router.js";
 import { formatSessionName } from "./sessionNaming.js";
+import { WorkflowMonitor } from "./workflowMonitor.js";
 
 function lastAssistantText(session: AgentSession): string {
   const messages = session.messages;
@@ -70,6 +71,7 @@ export class GhostyRuntime {
   private readonly pool: SessionPool;
   private readonly catalogStore: SessionCatalogStore;
   private readonly router: Router;
+  private readonly workflowMonitor: WorkflowMonitor;
 
   private constructor(
     private readonly projectDir: string,
@@ -86,6 +88,7 @@ export class GhostyRuntime {
     this.pool = new SessionPool(this.projectDir, this.workDir, this.runDir, this.env, this.config);
     this.catalogStore = new SessionCatalogStore(this.runDir, this.config.defaults.projectTag);
     this.router = new Router(this.projectDir, this.workDir, this.runDir, this.env, this.config, this.catalogStore, this.trace);
+    this.workflowMonitor = new WorkflowMonitor(this.runDir, this.config.defaults.workflowMonitor);
   }
 
   static async create(options: GhostyRuntimeOptions): Promise<GhostyRuntime> {
@@ -136,6 +139,11 @@ export class GhostyRuntime {
     const runtime = new GhostyRuntime(projectDir, workDir, runDir, env, config, coordinator, trace, artifacts);
     const catalog = await runtime.catalogStore.load();
     await trace.append({ type: "session_catalog_loaded", version: catalog.version, counts: runtime.catalogStore.countByPeer() });
+    try {
+      void runtime.workflowMonitor.run("session_start");
+    } catch {
+      // best-effort only
+    }
 
     delegateHandler = runtime.delegateToPeer.bind(runtime);
     delegateBatchHandler = runtime.delegateBatch.bind(runtime);
@@ -176,6 +184,12 @@ export class GhostyRuntime {
     text: string,
     options?: { streamingBehavior?: "steer" | "followUp" },
   ): Promise<string> {
+    try {
+      void this.workflowMonitor.maybeRun("heartbeat_user_message");
+    } catch {
+      // best-effort only
+    }
+
     await this.trace.append({
       type: "user_message",
       source: "coordinator",
@@ -353,6 +367,7 @@ export class GhostyRuntime {
         coordinatorSessionId: this.coordinator.sessionId,
         peerSessionId: peer.sessionId,
         sessionState: peer.sessionState,
+        jobId: `${this.coordinator.sessionId}:${peer.sessionId}`,
       });
 
       const beforeCount = peer.session.messages.length;

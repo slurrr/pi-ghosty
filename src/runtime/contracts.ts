@@ -39,7 +39,28 @@ export interface PeerResult {
   };
 }
 
-export function buildPeerDelegationPrompt(request: DelegateRequest, meta: { projectTag: string; coordinatorSessionId: string; peerSessionId: string; sessionState: "new" | "resumed" }): string {
+export interface DelegationLaunch {
+  title: string;
+  peerName: (typeof ghostyPeerNames)[number];
+  jobId: string;
+  sessionId: string;
+  sessionState: "new" | "resumed";
+  delegationMessage: string;
+  routing?: PeerResult["routing"];
+  launchedAt: string;
+}
+
+export interface DelegationReport extends DelegationLaunch {
+  coordinatorSessionId: string;
+  peerSessionId: string;
+  reportSource: "tool" | "text";
+  rawText?: string;
+  output: PeerOutput;
+  reportPath: string;
+  completedAt: string;
+}
+
+export function buildPeerDelegationPrompt(request: DelegateRequest, meta: { projectTag: string; coordinatorSessionId: string; peerSessionId: string; sessionState: "new" | "resumed"; jobId: string }): string {
   const sections = [
     `You are the ${request.peerName} peer in pi-ghosty.`,
     `Role: specialist peer.`,
@@ -47,6 +68,7 @@ export function buildPeerDelegationPrompt(request: DelegateRequest, meta: { proj
     `Coordinator session: ${meta.coordinatorSessionId}`,
     `Peer session: ${meta.peerSessionId}`,
     `Peer session state: ${meta.sessionState}`,
+    `Delegation job: ${meta.jobId}`,
     "",
     "# Task",
     request.task.trim(),

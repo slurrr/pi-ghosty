@@ -2,7 +2,7 @@ import { Type } from "@sinclair/typebox";
 import { defineTool } from "@mariozechner/pi-coding-agent";
 import { peerOutputSchema, type PeerOutput } from "./contracts.js";
 
-export function createPeerReportTool() {
+export function createPeerReportTool(onReport?: (output: PeerOutput) => Promise<void> | void) {
   return defineTool({
     name: "peer_report",
     label: "Peer Report",
@@ -15,6 +15,11 @@ export function createPeerReportTool() {
     }),
     execute: async (_toolCallId, params) => {
       const output = peerOutputSchema.parse(params) as PeerOutput;
+      try {
+        await onReport?.(output);
+      } catch {
+        // The peer report is durable even if the coordinator notification fails.
+      }
       return {
         content: [{ type: "text", text: "ok" }],
         details: output,

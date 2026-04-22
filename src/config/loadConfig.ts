@@ -63,6 +63,8 @@ function normalizeConfigJson(json: any): GhostyConfig {
       projectTag: defaults.projectTag,
       runtime,
       memory: defaults.memory,
+      workflowMonitor: defaults.workflowMonitor,
+      persistence: defaults.persistence,
     },
     agents: Object.fromEntries(
       Object.entries<any>(agents).map(([name, agent]) => [
