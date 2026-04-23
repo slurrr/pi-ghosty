@@ -3,7 +3,7 @@ import { Type } from "@sinclair/typebox";
 import { defineTool } from "@mariozechner/pi-coding-agent";
 import { sep } from "node:path";
 import type { GhostyConfig } from "../config/schema.js";
-import { WorkflowMonitor } from "../runtime/workflowMonitor.js";
+import { WorkflowMonitor } from "../workflow/workflowMonitor.js";
 
 function renderPeerTools(config: GhostyConfig): string {
   const peers = ["coder", "researcher", "reviewer", "memory"] as const;
@@ -34,7 +34,7 @@ async function renderWorkflowStatus(runDir: string, limit = 5): Promise<string> 
     `window: ${latest.windowStart} -> ${latest.windowEnd}`,
     `screened: winners=${latest.counts.winner}, candidates=${latest.counts.candidate}, parked=${latest.counts.parked}`,
     "top:",
-    ...(top.length > 0 ? top.map((c) => `- ${c.status} ${c.peerName} score=${c.score} id=${c.id}`) : ["- none"]),
+    ...(top.length > 0 ? top.map((c) => `- ${c.status} ${c.title} score=${c.score} id=${c.id}`) : ["- none"]),
   ].join("\n");
 }
 
@@ -43,6 +43,8 @@ export function peerToolsExtensionFactory(config: GhostyConfig, agentName: strin
     // Only coordinator needs this.
     if (agentName !== "coordinator") return;
 
+    // Tool only. Commands live under /ghosty in the extension so we don't have to chase
+    // duplicate command registration paths.
     pi.registerTool(
       defineTool({
         name: "peer_tools",
@@ -58,38 +60,5 @@ export function peerToolsExtensionFactory(config: GhostyConfig, agentName: strin
         },
       }),
     );
-
-    pi.registerCommand("peer", {
-      description: "Peer utilities. Subcommands: tools, workflow",
-      handler: async (args, ctx) => {
-        const sub = args.trim();
-        if (!sub || sub === "help") {
-          if (ctx.hasUI) ctx.ui.notify("Usage: /peer tools | /peer workflow [limit]", "info");
-          return;
-        }
-
-        if (sub === "tools") {
-          const text = renderPeerTools(config);
-          if (ctx.hasUI) {
-            await ctx.ui.editor("Peer tools", text);
-          }
-          return;
-        }
-
-        if (sub.startsWith("workflow")) {
-          const parts = sub.split(/\s+/).filter(Boolean);
-          const limitRaw = Number(parts[1]);
-          const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(20, Math.trunc(limitRaw)) : 5;
-          const runDir = inferRunDirFromSessionFile(ctx.sessionManager.getSessionFile()) ?? process.cwd();
-          const text = await renderWorkflowStatus(runDir, limit);
-          if (ctx.hasUI) {
-            await ctx.ui.editor("Workflow monitor", text);
-          }
-          return;
-        }
-
-        if (ctx.hasUI) ctx.ui.notify(`Unknown subcommand: ${sub}. Try: /peer tools or /peer workflow`, "warning");
-      },
-    });
   };
 }

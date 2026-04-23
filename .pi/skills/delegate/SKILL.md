@@ -5,86 +5,80 @@ description: Operator manual for the coordinator to delegate work to peers in pi
 
 # Delegate (pi-ghosty) — Operator Manual
 
-You are the **coordinator** (user-facing). Your job is to **delegate execution** and then **integrate results**.
+You are the **coordinator**. Your job is to delegate work to specialist peers, keep the big picture, and integrate results.
 
-This skill tells you exactly how to use:
-- `peer_tools` (internal tool): inspect each peer’s tool surface
-- `delegate` (tool): send a task to one peer
+Delegation in pi-ghosty is **non-blocking by default**. That means:
+- the peer starts immediately,
+- the coordinator keeps moving,
+- the peer report arrives later as a follow-up event,
+- and the coordinator must pick it up on the next turn.
 
-## Ground truth (important)
+## Ground truth
+- `peer_tools` tells you what each peer can do right now. Use it when you need to choose between specialists or when the tool surfaces are changing.
 - Peers return results via the `peer_report` tool.
 - The `delegate` tool takes:
-  - `peerName` (coder|researcher|reviewer|memory)
+  - `peerName` (`coder` | `researcher` | `reviewer` | `memory`)
   - `task` (required)
   - `context` (optional)
   - `expectedOutput` (optional)
-- **Session control:** the current runtime **does not let you force** “new vs resumed” peer sessions from the `delegate` tool. If a peer already has a session, it will usually be **resumed**.
-  - If you want a “fresh” behavior anyway: explicitly tell the peer to **ignore prior context** and include a full recap in `context`.
+- You cannot force a peer report to arrive mid-turn. If the report matters before the next move, end the current turn on purpose after launching the delegate.
+- If the answer is not needed immediately, launch the delegate and keep working on independent tasks.
 
-## When to delegate (rules)
-Delegate when any of the following is true:
-1) The task needs tools you *don’t* have (or shouldn’t spend time on), especially heavy repo scanning.
-2) The task is best done by a specialist role:
-   - investigation → researcher
-   - implementation → coder
-   - correctness/safety/scope check → reviewer
-   - memory behavior/tags/retain/recall policy → memory
-3) The user explicitly says: “delegate”, “hand off”, “ask the researcher/coder/reviewer/memory”, etc.
+## When to delegate
+Delegate when any of these is true:
+- the task needs tools you do not need to spend context on
+- the task is best done by a specialist role
+  - investigation → researcher
+  - implementation → coder
+  - correctness / safety / scope check → reviewer
+  - memory behavior / retain / recall / Hindsight → memory
+- the task can run in parallel while you keep the current turn moving
+- the task should be isolated so the peer stays focused and does not drift
 
-You may do **light** local work first (a quick `ls/grep/find/read`) only to create a better delegation envelope.
+Do light local work first only if it makes the delegation envelope clearer.
+
+## Core coordination rule
+Split work into two kinds:
+
+**parallel work**
+- delegate it
+- keep going with unrelated work
+- integrate the report when it lands later
+
+**decision-critical work**
+- delegate it only if you are willing to end the current turn and wait for the next one
+- otherwise keep it local until the answer is known
+
+Do not launch a delegation and then act like the result is required in the same breath. That is how you get fake blocking and wasted motion.
 
 ## Step-by-step procedure
 
-### Step 0 — Decide if this is a delegation moment
-Ask yourself:
-- “Is this execution work?” → delegate.
-- “Is this synthesis/plan/integration?” → you do it.
+### Step 1 — Decide the mode
+Ask:
+- “Can I keep moving without this result?” → delegate and continue
+- “Do I need this result before the next move?” → delegate and end the turn
 
-If unsure, delegate.
+If unsure, prefer **parallel work** and keep the task narrow.
 
-### Step 1 — Call `peer_tools`
-Do **not** guess. Call `peer_tools` to confirm what peers can do right now.
+### Step 2 — Pick the peer
+If the available tool surface might matter, check `peer_tools` first.
 
-### Step 2 — Pick the peer (decision table)
-Use this table (default choices):
-- **coder**: needs `bash`, `edit`, `write`, implementation, refactors, tests
-- **researcher**: needs repo exploration (`read/grep/find/ls`) + factual mapping
-- **reviewer**: needs review/checklist/safety pass, spot regressions/scope drift
-- **memory**: memory system behavior, recall/retain tagging, Hindsight usage
+Default choices:
+- **coder**: `bash`, `edit`, `write`, implementation, refactors, tests
+- **researcher**: repo exploration (`read` / `grep` / `find` / `ls`) + factual mapping
+- **reviewer**: review / checklist / safety pass / scope drift
+- **memory**: memory system behavior, recall / retain, tags, scopes, Hindsight
 
 If the task needs multiple peers, do it sequentially:
-1) researcher for facts → 2) coder for changes → 3) reviewer for sanity
+1. researcher for facts
+2. coder for changes
+3. reviewer for sanity
 
-### Step 3 — Session strategy (resume vs “fresh start”)
-You can’t directly spawn a new peer session via `delegate`, so choose one:
+### Step 3 — Write the delegation envelope
+Use a single objective and a clear stop condition.
 
-**A) Resume-friendly task** (default):
-- Same thread/topic
-- Continuing incomplete work
-- Peer’s context is likely still relevant
-
-**B) “Fresh start” task** (simulate new):
-Use when:
-- New topic, unrelated to prior peer work
-- Peer previously got confused / stuck / repetitive
-- You need unbiased re-analysis
-
-For “fresh start”, include in `context`:
-- `FRESH START: Ignore prior conversation in this peer session. Treat this as a new task.`
-- A compact recap + the current repo state needed
-
-### Step 4 — Write a good delegation envelope
-The envelope is `task` + optional `context` + optional `expectedOutput`.
-
-#### 4.1 Task (required)
-Task must be:
-- single objective
-- action-oriented
-- scoped to what the peer can actually do
-
-**Task template (copy/paste):**
-
-```
+**Task template**
+```text
 Objective: <one sentence>
 Constraints:
 - Use only allowed tools.
@@ -96,29 +90,26 @@ Steps:
 3) <step>
 ```
 
-#### 4.2 Context (optional but recommended)
-Use context to eliminate ambiguity and prevent loops.
-Include:
-- what you already tried (brief)
+### Step 4 — Add context only when it helps
+Include only what removes ambiguity:
+- what you already tried
 - relevant file paths
-- relevant errors/log snippets
-- definitions (what “done” means)
+- relevant errors or logs
+- what “done” means
 
-**Context template:**
-
-```
+**Context template**
+```text
 Background: <2-5 bullets>
 Repo/workdir notes: <paths, constraints>
 What I tried: <1-3 bullets>
 Known gotchas: <1-3 bullets>
 ```
 
-#### 4.3 Expected output (optional but recommended)
-This is how you stop rambling and get a report you can integrate.
+### Step 5 — Define the expected output
+This keeps the peer from rambling.
 
-**ExpectedOutput template:**
-
-```
+**ExpectedOutput template**
+```text
 Return via peer_report with:
 - summary: 1-5 sentences
 - findings: bullets with file paths + line numbers when possible
@@ -126,39 +117,47 @@ Return via peer_report with:
 - next_actions: 1-5 concrete steps for coordinator
 ```
 
-### Step 5 — Call `delegate`
-Send the envelope. Keep it short but unambiguous.
+### Step 6 — Integrate later
+When the peer report arrives:
+- fold it into the current state
+- decide whether another delegation is needed
+- do not assume the report should have landed earlier
 
-### Step 6 — Integrate and decide next delegation
-After the peer returns:
-- If you need more facts → delegate to researcher again (or fresh-start).
-- If changes are needed → delegate to coder with precise file targets.
-- If risk/quality matters → delegate to reviewer for checklist.
+## Anti-loop guidance
+If a peer keeps working but not progressing:
+- tighten the objective
+- add an explicit stop condition
+- say what success looks like
+- keep the task bounded
 
-## Anti-loop guidance (coordinator-side)
-If a peer is repeatedly calling a tool successfully but not progressing:
-- That’s usually an ambiguous task / missing “stop condition”.
-Fix it by delegating again with:
-- a tighter objective
-- explicit stop condition ("stop after you find X")
-- explicit expectedOutput
+If you need the result to proceed, the fix is not to wait harder. The fix is to end the turn and let the report come back as the next turn.
 
 ## Examples
 
-### Example: delegate repo investigation to researcher
-- peerName: `researcher`
-- task:
-  - “Objective: Find where sampling parameters are applied to provider requests.”
-- context:
-  - “Search in src/ for samplingExtension + before_provider_request; cite files + lines.”
-- expectedOutput:
-  - “Return file paths + short explanation + next step.”
+### Research
+```text
+Objective: Find where sampling parameters are applied to provider requests.
+Constraints:
+- Use only local repo reading/search tools.
+- Stop once you locate the exact files and lines.
+Return via peer_report with summary, findings, and next_actions.
+```
 
-### Example: delegate implementation to coder
-- peerName: `coder`
-- task:
-  - “Objective: Update delegate skill to be a step-by-step operator manual.”
-- context:
-  - “Edit .pi/skills/delegate/SKILL.md; keep it small-model friendly; include templates.”
-- expectedOutput:
-  - “Return summary + list of edits.”
+### Implementation
+```text
+Objective: Update delegate skill to support non-blocking delegation.
+Constraints:
+- Edit .pi/skills/delegate/SKILL.md only.
+- Keep it small-model friendly.
+- Make the turn boundary rule explicit.
+Return via peer_report with summary and artifacts.
+```
+
+### Review
+```text
+Objective: Review the workflow monitor for scope drift and obvious bugs.
+Constraints:
+- Use only local repo inspection.
+- Focus on whether the monitor is dead-simple and deterministic.
+Return via peer_report with summary, findings, and next_actions.
+```

@@ -20,17 +20,78 @@ const existingReports = new Set(
     : [],
 );
 
+const timeoutMsRaw = Number(process.env.GHOSTY_PI_SMOKE_TIMEOUT_MS);
+const timeoutMs = Number.isFinite(timeoutMsRaw) && timeoutMsRaw > 0 ? Math.trunc(timeoutMsRaw) : 120_000;
+
+function getAuthPath() {
+  const agentDir = process.env.PI_CODING_AGENT_DIR?.trim() || resolve(homedir(), ".pi", "agent");
+  return resolve(agentDir, "auth.json");
+}
+
+function hasAuthForProvider(providerId) {
+  // env var auth (subset; only what we might smoke with)
+  const envMap = {
+    openai: "OPENAI_API_KEY",
+    anthropic: "ANTHROPIC_API_KEY",
+    google: "GEMINI_API_KEY",
+    mistral: "MISTRAL_API_KEY",
+    groq: "GROQ_API_KEY",
+  };
+
+  const envVar = envMap[providerId];
+  if (envVar && process.env[envVar]) return { ok: true, source: `env:${envVar}` };
+
+  // auth.json (api_key or oauth)
+  try {
+    const authPath = getAuthPath();
+    if (!existsSync(authPath)) return { ok: false, reason: `missing ${authPath}` };
+    const raw = readFileSync(authPath, "utf8");
+    const data = raw.trim() ? JSON.parse(raw) : {};
+    const cred = data?.[providerId];
+    if (cred && (cred.type === "api_key" || cred.type === "oauth")) return { ok: true, source: `auth.json:${providerId}:${cred.type}` };
+    return { ok: false, reason: `no credentials for ${providerId} in auth.json` };
+  } catch (err) {
+    return { ok: false, reason: `failed to read auth.json (${err?.message ?? String(err)})` };
+  }
+}
+
+const providerId = String(model.split("/")[0] || "").trim();
+if (providerId && providerId !== "vllm") {
+  const authCheck = hasAuthForProvider(providerId);
+  if (!authCheck.ok) {
+    console.error(
+      `Smoke test has no auth configured for provider ${providerId} (model ${model}).\n` +
+        `Reason: ${authCheck.reason}\n` +
+        `Fix: run \`pi /login\` (for OAuth providers) or set the provider env var / add credentials to auth.json.\n` +
+        `Or override model via GHOSTY_PI_SMOKE_MODEL.`,
+    );
+    process.exit(2);
+  }
+}
+
 const res = spawnSync(
   "pi",
   ["-p", "--session-dir", sessionDir, "-e", extPath, "--model", model, "/ghosty smoke"],
   {
     encoding: "utf8",
     env: { ...process.env, GHOSTY_AGENT_CONFIG_PATH: configPath, GHOSTY_EXTENSION_ACTIVE: "1" },
+    timeout: timeoutMs,
+    killSignal: "SIGKILL",
   },
 );
 
 if (res.error) {
-  console.error(res.error);
+  const err = res.error;
+  // spawnSync uses code=ETIMEDOUT when timeout triggers.
+  if (err && (err.code === "ETIMEDOUT" || err.message?.includes("timed out"))) {
+    console.error(
+      `Smoke test timed out after ${timeoutMs}ms using model ${model}.\n` +
+        `Try setting GHOSTY_PI_SMOKE_MODEL to a faster model and/or increase GHOSTY_PI_SMOKE_TIMEOUT_MS.`,
+    );
+    process.exit(3);
+  }
+
+  console.error(err);
   process.exit(1);
 }
 

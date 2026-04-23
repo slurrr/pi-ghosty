@@ -26,19 +26,19 @@ import {
   routingDecisionSchema,
   type DelegationLaunch,
   type DelegationReport,
-} from "../../../src/runtime/contracts.js";
-import { delegationReportPath, delegationReportTitle, writeDelegationReport } from "../../../src/runtime/delegationReports.js";
-import { createPeerReportTool } from "../../../src/runtime/peerReportTool.js";
-import { KeyedMutex, Semaphore } from "../../../src/runtime/concurrency.js";
-import { SessionCatalogStore, type CatalogEntry } from "../../../src/runtime/sessionCatalogStore.js";
-import { formatSessionName } from "../../../src/runtime/sessionNaming.js";
+} from "../../../src/delegation/contracts.js";
+import { delegationReportPath, delegationReportTitle, writeDelegationReport } from "../../../src/delegation/delegationReports.js";
+import { createPeerReportTool } from "../../../src/delegation/peerReportTool.js";
+import { KeyedMutex, Semaphore } from "../../../src/delegation/concurrency.js";
+import { SessionCatalogStore, type CatalogEntry } from "../../../src/delegation/sessionCatalogStore.js";
+import { formatSessionName } from "../../../src/delegation/sessionNaming.js";
 import { modelKey, resolveRoutingDefaults } from "../../../src/config/rules.js";
 import { resolveProjectPresetEnabledModels, setProjectEnabledModels } from "../../../src/config/projectSettings.js";
 import { memoryExtensionFactory } from "../../../src/extensions/memoryExtension.js";
 import { roleSystemPromptExtensionFactory } from "../../../src/extensions/roleSystemPromptExtension.js";
 import { samplingExtensionFactory } from "../../../src/extensions/samplingExtension.js";
 import { JsonlTrace } from "../../../src/logging/jsonlTrace.js";
-import { WorkflowMonitor } from "../../../src/runtime/workflowMonitor.js";
+import { WorkflowMonitor, getWorkflowMonitor } from "../../../src/workflow/workflowMonitor.js";
 
 const GHOSTY_PROMPT_MARKER = "GHOSTY_PROMPT_MARKER_v1";
 
@@ -173,7 +173,12 @@ export default function (pi: any) {
   const config = loadConfigFromFile(resolvedConfigPath);
   const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty");
   const appendSystemPath = resolve(projectDir, ".pi", "APPEND_SYSTEM.md");
-  const workflowMonitor = new WorkflowMonitor(runDir, config.defaults.workflowMonitor);
+  const workflowMonitor = getWorkflowMonitor({
+    projectTag: config.defaults.projectTag,
+    runDir,
+    agentName: "coordinator",
+    config: config.defaults.workflowMonitor,
+  });
 
   samplingExtensionFactory(config, "coordinator", {
     runDir,
@@ -377,11 +382,13 @@ export default function (pi: any) {
       "ghosty workflow",
       `updatedAt: ${latest.ts}`,
       `window: ${latest.windowStart} -> ${latest.windowEnd}`,
-      `scanned: reports=${latest.scanned.reports}, traceEvents=${latest.scanned.traceEvents}`,
+      `scanned: sources=${latest.sourceCount}, signals=${latest.signalCount}`,
       `screened: winners=${latest.counts.winner}, candidates=${latest.counts.candidate}, parked=${latest.counts.parked}`,
       "top:",
       ...(top.length > 0
-        ? top.map((c) => `- ${c.status} ${c.peerName} score=${c.score} wins=${c.wins} frictions=${c.frictions} id=${c.id}`)
+        ? top.map(
+            (c) => `- ${c.status} ${c.kind}/${c.category} score=${c.score} count=${c.count} title=${c.title} id=${c.id}`,
+          )
         : ["- none"]),
     ];
     return lines.join("\n");
@@ -1586,8 +1593,11 @@ export default function (pi: any) {
         const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(20, Math.trunc(limitRaw)) : 5;
         await runWorkflowMonitor("command_workflow", { force: true });
         const text = await renderWorkflowStatus(limit);
-        if (ctx.hasUI) ctx.ui.notify(text, "info");
-        else process.stdout.write(`${text}\n`);
+        if (ctx.hasUI) {
+          await ctx.ui.editor("Workflow monitor", text);
+        } else {
+          process.stdout.write(`${text}\n`);
+        }
         return;
       }
 
@@ -1657,8 +1667,21 @@ export default function (pi: any) {
         const peerArgs = parts.slice(1);
         const peerSubcommand = (peerArgs[0] || "open").toLowerCase();
 
+        if (peerSubcommand === "workflow") {
+          const limitRaw = Number(peerArgs[1]);
+          const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(20, Math.trunc(limitRaw)) : 5;
+          await runWorkflowMonitor("command_peer_workflow", { force: true });
+          const text = await renderWorkflowStatus(limit);
+          if (ctx.hasUI) {
+            await ctx.ui.editor("Workflow monitor", text);
+          } else {
+            process.stdout.write(`${text}\n`);
+          }
+          return;
+        }
+
         if (peerSubcommand !== "open") {
-          const msg = `Unknown subcommand: ${peerSubcommand}. Try: /ghosty peer open <peer>`;
+          const msg = `Unknown subcommand: ${peerSubcommand}. Try: /ghosty peer open <peer> or /ghosty peer workflow [limit]`;
           if (ctx.hasUI) ctx.ui.notify(msg, "warning");
           else process.stdout.write(`${msg}\n`);
           return;
