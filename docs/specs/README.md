@@ -1,11 +1,5 @@
 # Specs
 
-Create one file per feature or change proposal.
+Specs are permanent design/change records (like decisions), and new specs should be added here.
 
-Suggested sections:
-- Problem
-- Scope
-- Requirements
-- Constraints
-- Open questions
-- Acceptance criteria
+If you write a new spec, keep it short and behavior-focused. Use `template.md`.

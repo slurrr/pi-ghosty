@@ -4,17 +4,17 @@ This report synthesizes the two Hindsight research artifacts and reconciles them
 
 Sources:
 - **Upstream Hindsight docs (branch-local):** `docs/Hindsight/skills/hindsight-docs/references/**` (server/API semantics; `HINDSIGHT_API_*`)
-- Current repo behavior + agentmux launcher notes: `docs/reference/hindsight_current_implementation.md`
-- Local embedded `pg0` deployment notes: `docs/reference/hindsight_docs_local_pg0.md`
+- Current repo behavior + agentmux launcher notes: `docs/archive/reference/hindsight_current_implementation.md`
+- Local embedded `pg0` deployment notes: `docs/archive/reference/hindsight_docs_local_pg0.md`
 - Supporting decision doc: `docs/decisions/0002-memory-hindsight.md`
-- Supporting config reference (large): `docs/reference/hindsight_config_first.md`
+- Supporting config reference (large): `docs/archive/reference/hindsight_config_first.md`
 - Current implementation: `src/extensions/memoryExtension.ts`, env defaults: `src/env.ts`, example env: `.env.example`, runtime defaults: `pi-agent.json`
 
 ---
 
 ## 0) What pi-ghosty does today (baseline you’re configuring)
 
-pi-ghosty uses a memory extension wired into the agent lifecycle (`docs/reference/hindsight_current_implementation.md`, `src/extensions/memoryExtension.ts`).
+pi-ghosty uses a memory extension wired into the agent lifecycle (`docs/archive/reference/hindsight_current_implementation.md`, `src/extensions/memoryExtension.ts`).
 
 - **Recall** runs at `before_agent_start` and injects a bullet list into the **system prompt**.
   - Query: `event.prompt` (unbounded; entire prompt).
@@ -27,7 +27,7 @@ pi-ghosty uses a memory extension wired into the agent lifecycle (`docs/referenc
   - `observation_scopes = custom: [[projectTag],[agent:<name>]]` to consolidate at durable scopes.
   - `async: true` (passed as `as any`). (`src/extensions/memoryExtension.ts`, aligns with the v1 decision in `docs/decisions/0002-memory-hindsight.md`)
 
-- **Reflect** is not wired in pi-ghosty v1. (`docs/reference/hindsight_current_implementation.md`, `docs/decisions/0002-memory-hindsight.md`)
+- **Reflect** is not wired in pi-ghosty v1. (`docs/archive/reference/hindsight_current_implementation.md`, `docs/decisions/0002-memory-hindsight.md`)
 
 Operationally: pi-ghosty expects **a running Hindsight HTTP endpoint** at `HINDSIGHT_BASE_URL` (default `http://localhost:8888` in `src/env.ts` and `.env.example`).
 
@@ -37,8 +37,8 @@ Operationally: pi-ghosty expects **a running Hindsight HTTP endpoint** at `HINDS
 
 ### 1.1 Tag matching: current code is stricter than the “local pg0 notes” recommend
 
-- Current code uses `tags_match: "all"` for recall (`src/extensions/memoryExtension.ts`; also described in `docs/reference/hindsight_current_implementation.md`).
-- The local pg0 artifact recommends “strict matching” when multiple agents share a bank and explicitly calls out `any_strict` as a workaround for cross-agent contamination (`docs/reference/hindsight_docs_local_pg0.md`, citing `docs/reference/hindsight_config_first.md` for `any_strict`).
+- Current code uses `tags_match: "all"` for recall (`src/extensions/memoryExtension.ts`; also described in `docs/archive/reference/hindsight_current_implementation.md`).
+- The local pg0 artifact recommends “strict matching” when multiple agents share a bank and explicitly calls out `any_strict` as a workaround for cross-agent contamination (`docs/archive/reference/hindsight_docs_local_pg0.md`, citing `docs/archive/reference/hindsight_config_first.md` for `any_strict`).
 
 Interpretation:
 - `all` is **very strict** (requires both project and agent tag). That’s good for isolation but can under-recall cross-agent project memory.
@@ -46,8 +46,8 @@ Interpretation:
 
 ### 1.2 “Local pg0 notes” are Hindsight-server-centric; current implementation doc mentions agentmux
 
-- `docs/reference/hindsight_docs_local_pg0.md` focuses on **Hindsight API env vars** (DB, embeddings, reranker, missions, observation flags).
-- `docs/reference/hindsight_current_implementation.md` additionally documents **agentmux** behavior for launching Hindsight (mapping to `HINDSIGHT_API_*` env and using embedded `pg0` via `pg0.Pg0`).
+- `docs/archive/reference/hindsight_docs_local_pg0.md` focuses on **Hindsight API env vars** (DB, embeddings, reranker, missions, observation flags).
+- `docs/archive/reference/hindsight_current_implementation.md` additionally documents **agentmux** behavior for launching Hindsight (mapping to `HINDSIGHT_API_*` env and using embedded `pg0` via `pg0.Pg0`).
 
 Interpretation:
 - For pi-ghosty itself, the only required knobs are `HINDSIGHT_BASE_URL` and `HINDSIGHT_BANK_ID` (`src/env.ts`, `.env.example`, `pi-agent.json`).
@@ -55,7 +55,7 @@ Interpretation:
 
 ### 1.3 “Async” options are untyped and may be a no-op depending on client version
 
-Both recall and retain pass `{ async: true }` with an `as any` cast (`src/extensions/memoryExtension.ts`), which `docs/reference/hindsight_current_implementation.md` flags as “best-effort.”
+Both recall and retain pass `{ async: true }` with an `as any` cast (`src/extensions/memoryExtension.ts`), which `docs/archive/reference/hindsight_current_implementation.md` flags as “best-effort.”
 
 Interpretation:
 - Treat `async` behavior as **not guaranteed** unless verified against the pinned `@vectorize-io/hindsight-client` version (`package.json` shows `^0.4.22`).
@@ -93,7 +93,7 @@ Notes:
 Key shifts vs local:
 - Replace embedded DB (`pg0`) with real Postgres:
   - `HINDSIGHT_API_DATABASE_URL=postgresql://...`
-- Keep vector extension consistent with your Postgres setup (e.g., `pgvector`). (`docs/reference/hindsight_docs_local_pg0.md` cites the DB knobs via `docs/reference/hindsight_config_first.md`)
+- Keep vector extension consistent with your Postgres setup (e.g., `pgvector`). (`docs/archive/reference/hindsight_docs_local_pg0.md` cites the DB knobs via `docs/archive/reference/hindsight_config_first.md`)
 
 LLM/extraction/reranking:
 - Use a strong “structured output reliable” provider/model for retain/reflect as suggested in the decision doc (`docs/decisions/0002-memory-hindsight.md`).
@@ -105,9 +105,9 @@ LLM/extraction/reranking:
   - Default safe stance: keep pi-ghosty recall tag matching strict (current `tags_match: "all"`). (`src/extensions/memoryExtension.ts`)
   - If you must enable cross-agent project recall, do it by narrowing banks (per project/user) rather than weakening tags.
 - Observations:
-  - Keep `HINDSIGHT_API_ENABLE_OBSERVATIONS=true` (default-on behavior described in `docs/reference/hindsight_docs_local_pg0.md` and v1 decision `docs/decisions/0002-memory-hindsight.md`).
+  - Keep `HINDSIGHT_API_ENABLE_OBSERVATIONS=true` (default-on behavior described in `docs/archive/reference/hindsight_docs_local_pg0.md` and v1 decision `docs/decisions/0002-memory-hindsight.md`).
 - Storage growth:
-  - Consider `HINDSIGHT_API_ENABLE_OBSERVATION_HISTORY=false` to reduce storage overhead (`docs/reference/hindsight_docs_local_pg0.md`).
+  - Consider `HINDSIGHT_API_ENABLE_OBSERVATION_HISTORY=false` to reduce storage overhead (`docs/archive/reference/hindsight_docs_local_pg0.md`).
 
 ---
 
@@ -129,7 +129,7 @@ Sources: `.env.example`, `src/env.ts`, `pi-agent.json`.
 
 #### B2) Hindsight API (recommended baseline)
 
-From the local pg0 artifact (`docs/reference/hindsight_docs_local_pg0.md`, citing `docs/reference/hindsight_config_first.md`), use:
+From the local pg0 artifact (`docs/archive/reference/hindsight_docs_local_pg0.md`, citing `docs/archive/reference/hindsight_config_first.md`), use:
 ```bash
 # DB (embedded)
 HINDSIGHT_API_DATABASE_URL=pg0
@@ -151,7 +151,7 @@ HINDSIGHT_API_RETAIN_MISSION="Focus on technical decisions, architecture choices
 
 #### B3) Operational tuning (local-only)
 
-- If your machine is resource constrained, lower Hindsight recall/retain concurrency (the local pg0 artifact explicitly notes this; it cites `docs/reference/hindsight_config_first.md` for the concurrency knobs).
+- If your machine is resource constrained, lower Hindsight recall/retain concurrency (the local pg0 artifact explicitly notes this; it cites `docs/archive/reference/hindsight_config_first.md` for the concurrency knobs).
 - Keep pi-ghosty’s strict tag matching (`tags_match: "all"`) to avoid cross-agent leakage inside a single shared local bank. (`src/extensions/memoryExtension.ts`)
 
 ---
@@ -178,13 +178,13 @@ HINDSIGHT_API_VECTOR_EXTENSION=pgvector
 ```
 
 Shift “heavy” ML components to served providers:
-- Embeddings provider to TEI (or another served embedding stack), as suggested as an upgrade path (`docs/reference/hindsight_docs_local_pg0.md`).
+- Embeddings provider to TEI (or another served embedding stack), as suggested as an upgrade path (`docs/archive/reference/hindsight_docs_local_pg0.md`).
 - Optionally use a stronger remote LLM for retain/reflect (aligned with the v1 decision’s “option open to use a stronger model/provider”). (`docs/decisions/0002-memory-hindsight.md`)
 
 #### C3) Operational tuning (hybrid)
 
 - Network dependency risks: plan for partial failures.
-  - pi-ghosty already treats memory as optional (recall/retain errors are caught; described in `docs/reference/hindsight_current_implementation.md` and visible in `src/extensions/memoryExtension.ts`).
+  - pi-ghosty already treats memory as optional (recall/retain errors are caught; described in `docs/archive/reference/hindsight_current_implementation.md` and visible in `src/extensions/memoryExtension.ts`).
 - Keep strict tag scoping unless you have per-agent/per-project banks.
 
 ---
@@ -198,11 +198,11 @@ Shift “heavy” ML components to served providers:
    - For anything beyond a single local instance, use a non-default `HINDSIGHT_BANK_ID` naming scheme.
 
 2) **Enable observations; disable observation history unless you need it**
-   - Enable: `HINDSIGHT_API_ENABLE_OBSERVATIONS=true` (default-on learning loop; `docs/decisions/0002-memory-hindsight.md`, `docs/reference/hindsight_docs_local_pg0.md`).
-   - Consider: `HINDSIGHT_API_ENABLE_OBSERVATION_HISTORY=false` for storage control (`docs/reference/hindsight_docs_local_pg0.md`).
+   - Enable: `HINDSIGHT_API_ENABLE_OBSERVATIONS=true` (default-on learning loop; `docs/decisions/0002-memory-hindsight.md`, `docs/archive/reference/hindsight_docs_local_pg0.md`).
+   - Consider: `HINDSIGHT_API_ENABLE_OBSERVATION_HISTORY=false` for storage control (`docs/archive/reference/hindsight_docs_local_pg0.md`).
 
 3) **Use a retain mission** to prevent noisy memories
-   - Recommended mission string is already proposed in `docs/reference/hindsight_docs_local_pg0.md` (citing `docs/reference/hindsight_config_first.md`).
+   - Recommended mission string is already proposed in `docs/archive/reference/hindsight_docs_local_pg0.md` (citing `docs/archive/reference/hindsight_config_first.md`).
 
 ### 3.2 If you operate multiple peers/agents in one bank
 
@@ -214,7 +214,7 @@ Shift “heavy” ML components to served providers:
 
 ### 3.3 Performance tuning you can do without changing pi-ghosty code
 
-- Lower server concurrency for local machines (the local pg0 artifact recommends reducing concurrency to reduce CPU/DB contention; it cites `docs/reference/hindsight_config_first.md`).
+- Lower server concurrency for local machines (the local pg0 artifact recommends reducing concurrency to reduce CPU/DB contention; it cites `docs/archive/reference/hindsight_config_first.md`).
 - Keep recall payload bounded; pi-ghosty already uses `max_tokens: 2048`. (`src/extensions/memoryExtension.ts`)
 
 ---
@@ -222,12 +222,12 @@ Shift “heavy” ML components to served providers:
 ## 4) Risks / gaps that matter for configuration decisions
 
 1) **Recall query is the full prompt**
-   - pi-ghosty passes `event.prompt` as the recall query (`src/extensions/memoryExtension.ts`; also described in `docs/reference/hindsight_current_implementation.md`).
+   - pi-ghosty passes `event.prompt` as the recall query (`src/extensions/memoryExtension.ts`; also described in `docs/archive/reference/hindsight_current_implementation.md`).
    - Risk: unnecessary token load + worse retrieval relevance.
    - Config implication: on frontier/hybrid, you may need to budget more for recall latency or tighten server-side limits.
 
 2) **Async flag is untyped and may not work as intended**
-   - Both recall and retain use `async: true` with `as any` (`src/extensions/memoryExtension.ts`; noted in `docs/reference/hindsight_current_implementation.md`).
+   - Both recall and retain use `async: true` with `as any` (`src/extensions/memoryExtension.ts`; noted in `docs/archive/reference/hindsight_current_implementation.md`).
    - Risk: “non-blocking” expectations may be wrong; treat as best-effort.
 
 3) **Bank collisions when sharing one Hindsight instance**
@@ -236,7 +236,7 @@ Shift “heavy” ML components to served providers:
    - Mitigation: enforce bank naming conventions and unique project tags.
 
 4) **Reflect is not in the loop**
-   - pi-ghosty v1 relies on observations as the “always-on learning loop” (`docs/decisions/0002-memory-hindsight.md`) and explicitly does not wire reflect yet (`docs/reference/hindsight_current_implementation.md`).
+   - pi-ghosty v1 relies on observations as the “always-on learning loop” (`docs/decisions/0002-memory-hindsight.md`) and explicitly does not wire reflect yet (`docs/archive/reference/hindsight_current_implementation.md`).
    - Config implication: ensure observations are enabled if you expect durable synthesis without reflect.
 
 ---

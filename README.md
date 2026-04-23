@@ -1,47 +1,61 @@
 # pi-ghosty
 
-Native (TypeScript) single-model multi-peer agent host built on pi-mono packages, with:
-- vLLM (`/v1/chat/completions`) as the single local model backend
-- Hindsight for long-term memory (retain-all + observations)
-- Telegram capability via upstream `pi-telegram` extension (optional)
+pi-ghosty is a **Pi extension** that turns Pi into a small multi-peer “ghost in the machine” for your day-to-day terminal life.
 
-## Prereqs
-- Node.js (tested with Node 24)
-- vLLM running at `http://localhost:8002/v1`
-- Hindsight running at `http://localhost:8888`
+this repo is contributor-facing: it contains the extension entrypoint, orchestration helpers, and prompt parts
 
-## Setup
+## what runs
+
+the extension entrypoint is `.pi/extensions/ghosty/index.ts`
+
+the shared code it uses lives under `src/` (`delegation/`, `memory/`, `workflow/`, `extensions/`, `config/`)
+
+all durable state/artifacts go under `runDir` (default `~/runs/pi-ghosty`, override `GHOSTY_PI_RUN_DIR`)
+
+## prereqs
+
+- node.js (tested with node 24)
+- (optional) hindsight at `http://localhost:8888` for memory
+- (optional) vllm at `http://localhost:8002/v1` for local models
+
+## setup
+
 ```bash
 cp .env.example .env
 npm install
 ```
 
-## Run
+## run
+
 ```bash
 npm run dev
 ```
 
-## Debug
-All debug flags default off (`0`/unset). Quick “turn everything on”:
+## verify
+
 ```bash
-npm run dev:debug
+npm run typecheck
+npm run smoke:pi-ext
 ```
 
-Useful flags:
-- `GHOSTY_TRACE_SYSTEM_PROMPT=1`: persist effective system prompt snapshots (only when it changes)
-- `GHOSTY_DEBUG_TOOL_BLOCKS=1`: trace tool blocks (policy + gating)
-- `GHOSTY_DEBUG_TOOL_SURFACE=1`: log allowed tool surface once per session
-- `GHOSTY_DEBUG_PROMPT_PARTS=1`: log which peer prompt part files were loaded (hashes)
-- `GHOSTY_AGENT_CONFIG_PATH=./pi-agent-canonical.json`: optional config override for ghosty launches; defaults to `./pi-agent-canonical.json`
-- `/ghosty models`: show scoped model status plus configured presets
-- `/ghosty models preset <name>`: apply a configured `modelScopePresets` entry to Pi `enabledModels`
+## useful commands (in pi)
 
-## Notes
-- Canonical unified config now lives in `pi-agent-canonical.json` and is the default config used by ghosty.
-- Local model request shaping is now intended to be model-specific via `requestRules` (for example `vllm/omnicoder-9b` vs `vllm/gemma-4-e4b`), so multiple local models can coexist with separate knobs.
-- `pi-agent-local.json` and `pi-agent-frontier.json` remain as compatibility/migration examples while this branch finishes proving the unified shape.
-- `modelScopePresets` are helpers for applying Pi `enabledModels` presets; Pi `/scoped-models` remains canonical.
-- `pi-agent.json` remains as a legacy compatibility file while this branch finishes the migration.
-- Shared system prompt addendum is `.pi/APPEND_SYSTEM.md` (pi default system prompt is used).
-- Peer prompt parts live in `peers/<peer>/*.md` (all `.md` in that folder are appended in lexicographic order).
-- Interface is pi TUI (primary). For Telegram, use the upstream `pi-telegram` extension (see `docs/decisions/0005-telegram-via-pi-telegram.md`).
+- `/ghosty status`
+- `/ghosty smoke`
+- `/ghosty workflow` (debug view; should be automated in normal use)
+- `/ghosty memory` / `/ghosty memory full` (what got injected)
+
+## scripts
+
+- `npm run memory -- --all` (print latest memory receipts)
+- `npm run memory -- --agent coordinator --full`
+
+## config
+
+config: `pi-agent.json` (override with `GHOSTY_AGENT_CONFIG_PATH`)
+
+## docs
+
+- `AGENTS.md` minimal agent contract
+- `docs/decisions/` architecture decision records
+- historical migration docs live under `docs/archive/`

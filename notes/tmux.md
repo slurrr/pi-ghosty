@@ -75,4 +75,4 @@ cd ~/code/dev/pi-ghosty
 npm run kill
 ```
 
-If you override `GHOSTY_RUN_DIR`, export it before `npm run kill`.
+If you override `GHOSTY_PI_RUN_DIR`, export it before `npm run kill`.

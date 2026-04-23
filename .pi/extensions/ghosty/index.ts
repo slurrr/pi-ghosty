@@ -168,7 +168,7 @@ export default function (pi: any) {
   }
 
   const projectDir = getProjectDirFromImportMetaUrl(import.meta.url);
-  const rawConfigPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim() || "./pi-agent-canonical.json";
+  const rawConfigPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim() || "./pi-agent.json";
   const resolvedConfigPath = resolve(projectDir, rawConfigPath);
   const config = loadConfigFromFile(resolvedConfigPath);
   const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty");
@@ -392,6 +392,46 @@ export default function (pi: any) {
         : ["- none"]),
     ];
     return lines.join("\n");
+  }
+
+  async function renderMemoryInjected(role: string, sessionId: string, full: boolean): Promise<string> {
+    const receiptDir = resolve(runDir, "data", "memory", "receipts", role, sessionId);
+    const latestPath = resolve(receiptDir, "latest.json");
+    const latestRaw = existsSync(latestPath) ? readFileSync(latestPath, "utf8") : "";
+    const latest = latestRaw.trim() ? safeJsonParse<any>(latestRaw) : null;
+
+    if (!latest) {
+      const fallbackPath = resolve(receiptDir, "latest-injected.md");
+      if (existsSync(fallbackPath)) return readFileSync(fallbackPath, "utf8");
+      return `ghosty memory: no receipts yet for ${role}/${sessionId}`;
+    }
+
+    const turnDir = typeof latest.turnDir === "string" ? resolve(receiptDir, latest.turnDir) : null;
+    const injectedPath = turnDir ? resolve(turnDir, "injected.md") : resolve(receiptDir, "latest-injected.md");
+    const injected = existsSync(injectedPath) ? readFileSync(injectedPath, "utf8") : "(missing injected block)";
+
+    if (full) {
+      return [
+        "ghosty memory (injected)",
+        `role: ${role}`,
+        `session: ${sessionId}`,
+        `ts: ${latest.ts ?? "?"}`,
+        "",
+        injected.trimEnd(),
+      ].join("\n");
+    }
+
+    const lines = injected.split(/\r?\n/).filter(Boolean);
+    const head = lines.slice(0, 20).join("\n");
+    const more = lines.length > 20 ? `\n… (${lines.length - 20} more lines. try: /ghosty memory full)` : "";
+    return [
+      "ghosty memory (injected)",
+      `role: ${role}`,
+      `session: ${sessionId}`,
+      `ts: ${latest.ts ?? "?"}`,
+      "",
+      head + more,
+    ].join("\n");
   }
 
   function inferRoleFromSessionFile(sessionFile: string | null | undefined): string {
@@ -1595,6 +1635,26 @@ export default function (pi: any) {
         const text = await renderWorkflowStatus(limit);
         if (ctx.hasUI) {
           await ctx.ui.editor("Workflow monitor", text);
+        } else {
+          process.stdout.write(`${text}\n`);
+        }
+        return;
+      }
+
+      if (subcommand === "memory") {
+        const arg = (parts[1] || "").toLowerCase();
+        const full = arg === "full";
+        const role = inferRoleFromSessionFile(ctx?.sessionManager?.getSessionFile?.());
+        const sessionId = String(ctx?.sessionManager?.getSessionId?.() ?? "");
+        if (!sessionId) {
+          const msg = "ghosty memory: no session id";
+          if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+          else process.stdout.write(`${msg}\n`);
+          return;
+        }
+        const text = await renderMemoryInjected(role, sessionId, full);
+        if (ctx.hasUI) {
+          await ctx.ui.editor("Memory injected", text);
         } else {
           process.stdout.write(`${text}\n`);
         }

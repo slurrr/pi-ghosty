@@ -1,29 +1,35 @@
-# Agent Notes (pi-ghosty)
+# AGENTS (pi-ghosty)
 
-This repo is a lightweight multi-peer orchestrator built on pi-mono packages. Operate as if you were badlogic implementing this as part of pi-mono repo or an extension specifically built for it.
+this repo is an **extension-only** pi package. it adds a coordinator + peer operating model (multi-peer delegation), memory wiring (hindsight), and durable receipts.
 
-## Architecture in one breath
-- The user talks to the `coordinator` only.
-- The coordinator delegates to specialist peers via the `delegate` tool.
-- Peers report results via a single `peer_report` tool call per delegation.
-- Runtime state lives outside the repo under `~/runs/pi-ghosty` (override: `GHOSTY_RUN_DIR`).
+entrypoint
+- `.pi/extensions/ghosty/index.ts`
 
-## Prompt layout
-- Global append: `.pi/APPEND_SYSTEM.md` (pi default system prompt is the base).
-- Peer parts: `peers/<agent>/*.md` appended in lexicographic order.
+agents
+- user talks to `coordinator`
+- coordinator delegates to peers: `coder`, `researcher`, `reviewer`, `memory`
+- peers must finish a delegated job by calling `peer_report`
 
-## Config and tools
-- Canonical allowlists: `pi-agent.json` (agent → tools).
-- Custom tools live under `src/runtime/*` (e.g. `delegate`, `peer_report`).
+config + prompts
+- config file: `pi-agent.json` (default; override with `GHOSTY_AGENT_CONFIG_PATH`)
+- shared system addendum: `.pi/APPEND_SYSTEM.md`
+- peer prompt parts: `peers/<agent>/*.md` (lexicographic order)
 
-## Debugging
-- System prompt is not persisted in the session transcript; use:
-  - `/system` (live view)
-  - `/system dump` (snapshot to runDir)
-  - `GHOSTY_TRACE_SYSTEM_PROMPT=1` (trace snapshots to runDir)
-- Debug flags are off by default; prefer `npm run dev:debug` when investigating.
+runtime artifacts
+- `runDir` default `~/runs/pi-ghosty` (override `GHOSTY_PI_RUN_DIR`)
+- key locations:
+  - sessions: `runDir/data/sessions/**`
+  - traces: `runDir/data/traces/**`
+  - delegation reports: `runDir/data/delegation-reports/**`
+  - memory receipts: `runDir/data/memory/receipts/**`
 
-## Style constraints
-- Prefer small modules and extensions over large frameworks.
-- Avoid “philosophy” in specs; keep docs logic/behavior oriented.
+how to verify
+- `npm run typecheck`
+- `npm run smoke:pi-ext`
+
+docs navigation
+- `README.md` contributor quickstart
+- `docs/reference/` curated reference (especially hindsight)
+- `docs/specs/` + `docs/decisions/` permanent records
+- `docs/archive/` old/duplicative migration notes
 

@@ -2,10 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { ghostyConfigSchema, type GhostyConfig, type RequestRule } from "./schema.js";
 
-const DEFAULT_CANONICAL_CONFIG_PATH = "pi-agent-canonical.json";
-const DEFAULT_RUNTIME_CONFIG_PATH = "pi-agent-local.json";
-const DEFAULT_EXTENSION_CONFIG_PATH = "pi-agent-frontier.json";
-const LEGACY_CONFIG_PATH = "pi-agent.json";
+const DEFAULT_CONFIG_PATH = "pi-agent.json";
 
 function resolveFirstExisting(rootDir: string, candidates: string[]): string {
   for (const candidate of candidates) {
@@ -97,21 +94,11 @@ export function loadExtensionConfigFromFile(configPath: string): GhostyConfig {
 }
 
 export function loadConfig(rootDir: string): GhostyConfig {
-  const path = resolveFirstExisting(rootDir, [
-    DEFAULT_CANONICAL_CONFIG_PATH,
-    DEFAULT_RUNTIME_CONFIG_PATH,
-    DEFAULT_EXTENSION_CONFIG_PATH,
-    LEGACY_CONFIG_PATH,
-  ]);
+  const path = resolveFirstExisting(rootDir, [DEFAULT_CONFIG_PATH]);
   return loadConfigFromFile(path);
 }
 
 export function loadExtensionConfig(rootDir: string): GhostyConfig {
-  const path = resolveFirstExisting(rootDir, [
-    DEFAULT_CANONICAL_CONFIG_PATH,
-    DEFAULT_EXTENSION_CONFIG_PATH,
-    DEFAULT_RUNTIME_CONFIG_PATH,
-    LEGACY_CONFIG_PATH,
-  ]);
+  const path = resolveFirstExisting(rootDir, [DEFAULT_CONFIG_PATH]);
   return loadExtensionConfigFromFile(path);
 }

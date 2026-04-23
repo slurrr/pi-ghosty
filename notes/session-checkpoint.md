@@ -6,7 +6,7 @@
 - Workflow monitor is implemented for the extension path and peer tools path using `src/workflow/workflowMonitor.ts`.
 - The monitor scans `runDir/data/traces/**`, scores repeatable pain/win signals, and writes durable summaries under `runDir/data/workflow/`.
 - The coordinator path hooks the monitor on `session_start` and heartbeat-style input events in `.pi/extensions/ghosty/index.ts`.
-- `/ghosty workflow` is available in extension mode, and `/peer workflow` shows the latest summary.
+- `/ghosty workflow` is available in extension mode.
 - Shared delegation helpers now live under `src/delegation/*` instead of the deleted runtime directory.
 - `npm run typecheck` passes.
 - `npm run smoke:pi-ext` passes.
