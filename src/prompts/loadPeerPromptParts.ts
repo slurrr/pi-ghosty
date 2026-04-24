@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 
 export interface PeerPromptParts {
   files: Array<{ path: string; content: string }>;
@@ -26,7 +26,12 @@ export function loadPeerPromptParts(rootDir: string, peerName: string): PeerProm
   const joined =
     files.length === 0
       ? ""
-      : files.map((f) => `\n\n# ${peerName}: ${f.path}\n\n${f.content}`).join("");
+      : files
+          .map((f) => {
+            const relPath = relative(rootDir, f.path) || f.path;
+            return `\n\n--- peer:${peerName} file:${relPath} ---\n${f.content}`;
+          })
+          .join("");
 
   return { files, joined };
 }

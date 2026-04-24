@@ -65,7 +65,7 @@
   },
   "agents": {
     "coordinator": {
-      "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch", "edit", "bash", "write"],
+      "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch"],
       "thinkingLevel": "medium",
       "defaultModel": "openai-codex/gpt-5.4-mini"
     },

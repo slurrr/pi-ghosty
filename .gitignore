@@ -16,3 +16,10 @@ data/
 *operating-contract.md
 
 docs/Hindsight*
+peers/coordinator/00-identity.md
+peers/coordinator/01-voice.md
+peers/coordinator/03-scoreboard.md
+peers/coordinator/06-rewards.md
+peers/coordinator/09-philosophy.md
+peers/drafts/*
+

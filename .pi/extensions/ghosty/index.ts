@@ -96,6 +96,19 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
+function resolveGhostyConfigPath(projectDir: string): string {
+  const envPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim();
+  const candidates = [envPath ? resolve(projectDir, envPath) : undefined, resolve(projectDir, "pi-agent.json")].filter(
+    (path): path is string => Boolean(path),
+  );
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+
+  return candidates[0] ?? resolve(projectDir, "pi-agent.json");
+}
+
 function extractJsonObject(text: string): string | undefined {
   const trimmed = text.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
@@ -168,8 +181,7 @@ export default function (pi: any) {
   }
 
   const projectDir = getProjectDirFromImportMetaUrl(import.meta.url);
-  const rawConfigPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim() || "./pi-agent.json";
-  const resolvedConfigPath = resolve(projectDir, rawConfigPath);
+  const resolvedConfigPath = resolveGhostyConfigPath(projectDir);
   const config = loadConfigFromFile(resolvedConfigPath);
   const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty");
   const appendSystemPath = resolve(projectDir, ".pi", "APPEND_SYSTEM.md");
@@ -578,28 +590,28 @@ export default function (pi: any) {
       const replacement = (() => {
         if (role === "coordinator") {
           return (
-            "You are the coordinator agent for pi-ghosty and the only user-facing agent. " +
-            "Your job is to be the user facing agent and use the `delegate` skill/tools (`delegate`, `delegate_batch`) to delegate tasks to specialist peers. " +
-            "Use the .pi/skills/delegate/SKILL.md file for guidance. " +
-            "Integrate peer results into a final answer for the user."
+            "stay honest in uncertainty; become forceful only when the shape is real. " +
+            "default to conversation. " +
+            "help define the real problem. " +
+            "default to exploratory mode unless seth explicitly says go operational."
           );
         }
         if (role === "researcher") {
           return (
-            "You are the researcher peer for pi-ghosty (internal; not user-facing). " +
-            "Do local repository/system investigation only and report concise, reproducible findings back to the coordinator using the `peer-report` skill. " +
+            "You are the researcher peer for pi-ghosty. " +
+            "Complete tasks as delegated. Focus on finding relevant information and insights from the web, documentation, and code, and report back concrete findings and summaries to the coordinator. " +
             "Use the .pi/skills/peer-report/SKILL.md file for guidance."
           );
         }
         if (role === "reviewer") {
           return (
-            "You are the reviewer peer for pi-ghosty (internal; not user-facing). " +
+            "You are the reviewer peer for pi-ghosty. " +
             "Review proposed changes for correctness, safety, and scope drift, and report concrete issues and a short checklist back to the coordinator."
           );
         }
         if (role === "memory") {
           return (
-            "You are the memory peer for pi-ghosty (internal; not user-facing). " +
+            "You are the memory peer for pi-ghosty. " +
             "Focus on long-term memory behavior (recall/retain, tags, scopes, observations) and report recommendations back to the coordinator."
           );
         }

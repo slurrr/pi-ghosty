@@ -35,7 +35,7 @@ Two roots, intentionally separate:
 
 1. **projectDir** (ghosty repo root)
    - source of truth for:
-     - `pi-agent-canonical.json`
+     - `pi-agent.json`
      - `.pi/extensions/ghosty/index.ts`
      - `.pi/APPEND_SYSTEM.md`
      - `.pi/skills/**`
@@ -67,7 +67,7 @@ Reject missing/invalid root with a clear startup error.
 
 ### Config resolution
 - Canonical-only implementation target:
-  - config path = `${projectDir}/pi-agent-canonical.json`
+  - config path = `${projectDir}/pi-agent.json`
 - In extension mode, still require `GHOSTY_AGENT_CONFIG_PATH`, but wrapper should set it from `projectDir` by default.
 
 ### Extension path resolution
@@ -104,7 +104,7 @@ Changes:
 - set env for child `pi` process:
   - `GHOSTY_PROJECT_DIR=<resolved projectDir>`
   - `GHOSTY_WORKDIR_MODE=<sandbox|trusted>`
-  - `GHOSTY_AGENT_CONFIG_PATH=<projectDir>/pi-agent-canonical.json` (unless explicitly overridden)
+  - `GHOSTY_AGENT_CONFIG_PATH=<projectDir>/pi-agent.json` (unless explicitly overridden)
 - resolve extension path from projectDir.
 
 ## 2) Runtime entrypoint
