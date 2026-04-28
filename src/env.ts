@@ -29,6 +29,8 @@ const envSchema = z.object({
 
   HINDSIGHT_BASE_URL: z.string().url().default("http://localhost:8888"),
   HINDSIGHT_BANK_ID: z.string().default("pi-ghosty"),
+  HINDSIGHT_PROCEDURAL_BANK_ID: z.string().default("pi-ghosty-procedural"),
+  HINDSIGHT_PERSONAL_BANK_ID: z.string().default("pi-ghosty-personal"),
 
   GHOSTY_PROJECT_DIR: z.string().optional(),
   GHOSTY_WORKDIR_MODE: workdirModeSchema,

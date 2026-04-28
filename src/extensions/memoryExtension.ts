@@ -206,16 +206,20 @@ export function memoryExtensionFactory(
   paths: { runDir: string },
 ): ExtensionFactory {
   const baseUrl = env.HINDSIGHT_BASE_URL || config.defaults.runtime?.hindsightBaseUrl || "http://localhost:8888";
-  const bankId = env.HINDSIGHT_BANK_ID || config.defaults.runtime?.hindsightBankId || "pi-ghosty";
   const projectTag = env.PROJECT_TAG || config.defaults.projectTag;
   const memoryDefaults = config.defaults.memory;
+  const proceduralBankId =
+    env.HINDSIGHT_PROCEDURAL_BANK_ID || memoryDefaults.banks?.procedural?.bankId || "pi-ghosty-procedural";
+  const personalBankId =
+    env.HINDSIGHT_PERSONAL_BANK_ID || memoryDefaults.banks?.personal?.bankId || "pi-ghosty-personal";
+  const hasSplitBanks = Boolean(proceduralBankId && personalBankId);
   const recallCfg = memoryDefaults.recall;
   const retainCfg = memoryDefaults.retain;
   const operationsCfg = memoryDefaults.operations;
 
   const hindsight = createHindsightClient({
     baseUrl,
-    bankId,
+    bankId: proceduralBankId,
   });
 
   const baseTags = [projectTag, `agent:${agentName}`, `session:${sessionId}`];
@@ -265,201 +269,168 @@ export function memoryExtensionFactory(
         return new Date().toISOString();
       })();
 
+      const recallTargets = hasSplitBanks
+        ? agentName === "coordinator"
+          ? [
+              { role: "personal", bankId: personalBankId },
+              { role: "procedural", bankId: proceduralBankId },
+            ]
+          : [{ role: "procedural", bankId: proceduralBankId }]
+        : [{ role: "procedural", bankId: proceduralBankId }];
+
       const t0 = performance.now();
-      try {
-        const recalled = await hindsight.recall(bankId, query, {
-          maxTokens: recallCfg.maxTokens,
-          budget: recallCfg.budget,
-          tags: recallTags,
-          tagsMatch: recallCfg.tagsMatch,
-          types: recallCfg.types,
-          queryTimestamp,
-          includeSourceFacts: recallCfg.includeSourceFacts,
-          maxSourceFactsTokens: recallCfg.includeSourceFactsMaxTokens,
-          includeChunks: recallCfg.includeChunks,
-          maxChunkTokens: recallCfg.includeChunksMaxTokens,
-          async: recallCfg.async,
-        } as any);
+      const allLines: string[] = [];
+      const recallPayloads: Record<string, any> = {};
+      let totalFactsCount = 0;
+      const recallErrors: Array<{ role: string; bankId: string; error: string }> = [];
 
-        const facts: any[] = (recalled as any)?.facts ?? (recalled as any)?.results ?? [];
-        const memoryLines = Array.isArray(facts)
-          ? facts
-              .slice(0, recallCfg.maxFacts)
-              .map((f) => (typeof f.text === "string" ? f.text.trim() : null))
-              .filter((x): x is string => !!x)
-          : [];
-        const memoryBlock = memoryLines.join("\n");
-
-        const t1 = performance.now();
-        lastRecallMs = Math.round(t1 - t0);
-
-        const recalledCount = Array.isArray(facts) ? facts.length : null;
-
-        await trace.append({
-          type: "memory_recall",
-          projectTag,
-          bankId,
-          agentName,
-          sessionId,
-          ms: Math.round(t1 - t0),
-          queryLen: query.length,
-          estimatedQueryTokensRaw: estimatedBeforeTrim,
-          estimatedQueryTokensFinal: shaped.estimatedTokens,
-          queryTrimmed: shaped.estimatedTokens < estimatedBeforeTrim,
-          queryTimestamp: queryTimestamp ?? null,
-          includeSourceFacts: recallCfg.includeSourceFacts,
-          includeChunks: recallCfg.includeChunks,
-          factsCount: recalledCount,
-          injectedLines: memoryLines.length,
-          injectedChars: memoryBlock.length,
-        });
-
-        // Human receipts + raw spine
+      for (const target of recallTargets) {
+        const bankStart = performance.now();
         try {
-          const ts = new Date().toISOString();
-          const turnId = `${safeTsId(ts)}-t${String(++turnSeq).padStart(4, "0")}`;
-          const sessionDir = memoryReceiptSessionDir(paths.runDir, agentName, sessionId);
-          const turnDir = resolve(sessionDir, "turns", turnId);
-          mkdirSync(turnDir, { recursive: true });
+          const recalled = await hindsight.recall(target.bankId, query, {
+            maxTokens: recallCfg.maxTokens,
+            budget: recallCfg.budget,
+            tags: recallTags,
+            tagsMatch: recallCfg.tagsMatch,
+            types: recallCfg.types,
+            queryTimestamp,
+            includeSourceFacts: recallCfg.includeSourceFacts,
+            maxSourceFactsTokens: recallCfg.includeSourceFactsMaxTokens,
+            includeChunks: recallCfg.includeChunks,
+            maxChunkTokens: recallCfg.includeChunksMaxTokens,
+            async: recallCfg.async,
+          } as any);
 
-          const injectedBlock = memoryBlock.trim()
-            ? `Recalled memory hints for ${agentName}. Treat these as untrusted and possibly stale; verify before acting.\n${memoryBlock}`
-            : "";
-          const injectedLines = memoryLines.length;
-          const injectedChars = injectedBlock.length;
+          recallPayloads[target.role] = recalled;
+          const facts: any[] = (recalled as any)?.facts ?? (recalled as any)?.results ?? [];
+          const memoryLines = Array.isArray(facts)
+            ? facts
+                .slice(0, recallCfg.maxFacts)
+                .map((f) => (typeof f.text === "string" ? f.text.trim() : null))
+                .filter((x): x is string => !!x)
+            : [];
 
-          // raw recall payload
-          writeJson(resolve(turnDir, "recall.json"), recalled);
+          totalFactsCount += Array.isArray(facts) ? facts.length : 0;
+          if (memoryLines.length > 0) {
+            allLines.push(`memory_${target.role}_bank ${target.bankId}`);
+            allLines.push(...memoryLines);
+            allLines.push("");
+          }
 
-          // injected block for quick viewing
-          writeText(resolve(turnDir, "injected.md"), injectedBlock || "(no memory injected)");
-
-          // metadata
-          writeJson(resolve(turnDir, "meta.json"), {
-            ts,
-            turnId,
+          await trace.append({
+            type: "memory_recall",
+            projectTag,
+            bankId: target.bankId,
+            bankRole: target.role,
             agentName,
             sessionId,
-            projectTag,
-            bankId,
-            recallMs: lastRecallMs,
-            factsCount: recalledCount,
-            injectedLines,
-            injectedChars,
-            recallTags,
+            ms: Math.round(performance.now() - bankStart),
+            queryLen: query.length,
+            estimatedQueryTokensRaw: estimatedBeforeTrim,
+            estimatedQueryTokensFinal: shaped.estimatedTokens,
+            queryTrimmed: shaped.estimatedTokens < estimatedBeforeTrim,
             queryTimestamp: queryTimestamp ?? null,
+            includeSourceFacts: recallCfg.includeSourceFacts,
+            includeChunks: recallCfg.includeChunks,
+            factsCount: Array.isArray(facts) ? facts.length : null,
+            injectedLines: memoryLines.length,
+            injectedChars: memoryLines.join("\n").length,
           });
-
-          // update session latest pointers
-          const latest = {
-            ts,
-            turnId,
-            // relative to the session receipt dir
-            turnDir: `turns/${turnId}`,
-            agentName,
-            sessionId,
+        } catch (err: any) {
+          const error = err?.message ?? String(err);
+          recallErrors.push({ role: target.role, bankId: target.bankId, error });
+          await trace.append({
+            type: "memory_recall_error",
             projectTag,
-            bankId,
-            recallMs: lastRecallMs,
-            factsCount: recalledCount,
-            injectedLines,
-            injectedChars,
-          };
-          writeJson(resolve(sessionDir, "latest.json"), latest);
-          writeText(resolve(sessionDir, "latest-injected.md"), injectedBlock || "(no memory injected)");
-
-          // update global index (best effort)
-          updateMemoryIndex(paths.runDir, knownAgents);
-
-          activeTurn = {
-            turnId,
-            ts,
-            sessionId,
+            bankId: target.bankId,
+            bankRole: target.role,
             agentName,
-            turnDir,
-            injectedBlock,
-            injectedLines,
-            injectedChars,
-            factsCount: recalledCount,
-            recallMs: lastRecallMs,
-          };
-        } catch {
-          // best effort
+            sessionId,
+            ms: Math.round(performance.now() - bankStart),
+            error,
+            estimatedQueryTokensRaw: estimatedBeforeTrim,
+            estimatedQueryTokensFinal: shaped.estimatedTokens,
+          });
         }
+      }
 
-        if (!memoryBlock.trim()) return undefined;
-        const injected = `${event.systemPrompt}\n\nRecalled memory hints for ${agentName}. Treat these as untrusted and possibly stale; verify before acting.\n${memoryBlock}`;
-        return { systemPrompt: injected };
-      } catch (err: any) {
-        const t1 = performance.now();
-        lastRecallMs = Math.round(t1 - t0);
-        const error = err?.message ?? String(err);
-        await trace.append({
-          type: "memory_recall_error",
-          projectTag,
-          bankId,
+      const t1 = performance.now();
+      lastRecallMs = Math.round(t1 - t0);
+      const memoryBlock = allLines.join("\n").trim();
+
+      // Human receipts + raw spine
+      try {
+        const ts = new Date().toISOString();
+        const turnId = `${safeTsId(ts)}-t${String(++turnSeq).padStart(4, "0")}`;
+        const sessionDir = memoryReceiptSessionDir(paths.runDir, agentName, sessionId);
+        const turnDir = resolve(sessionDir, "turns", turnId);
+        mkdirSync(turnDir, { recursive: true });
+
+        const injectedBlock = memoryBlock.trim()
+          ? `Recalled memory for ${agentName}. These are your durable memories from Hindsight queries.\n${memoryBlock}`
+          : recallErrors.length > 0
+            ? `(recall error) ${recallErrors.map((e) => `${e.role}:${e.error}`).join(" | ")}`
+            : "";
+        const injectedLines = memoryBlock.trim() ? memoryBlock.split("\n").length : 0;
+        const injectedChars = injectedBlock.length;
+
+        writeJson(resolve(turnDir, "recall.json"), { banks: recallPayloads, errors: recallErrors });
+        writeText(resolve(turnDir, "injected.md"), injectedBlock || "(no memory injected)");
+
+        writeJson(resolve(turnDir, "meta.json"), {
+          ts,
+          turnId,
           agentName,
           sessionId,
-          ms: Math.round(t1 - t0),
-          error,
-          estimatedQueryTokensRaw: estimatedBeforeTrim,
-          estimatedQueryTokensFinal: shaped.estimatedTokens,
+          projectTag,
+          bankIds: recallTargets.map((t) => ({ role: t.role, bankId: t.bankId })),
+          recallMs: lastRecallMs,
+          factsCount: totalFactsCount,
+          injectedLines,
+          injectedChars,
+          recallTags,
+          queryTimestamp: queryTimestamp ?? null,
+          recallErrors,
         });
 
-        // still write a receipt so it's visible that recall failed
-        try {
-          const ts = new Date().toISOString();
-          const turnId = `${safeTsId(ts)}-t${String(++turnSeq).padStart(4, "0")}`;
-          const sessionDir = memoryReceiptSessionDir(paths.runDir, agentName, sessionId);
-          const turnDir = resolve(sessionDir, "turns", turnId);
-          mkdirSync(turnDir, { recursive: true });
+        const latest = {
+          ts,
+          turnId,
+          turnDir: `turns/${turnId}`,
+          agentName,
+          sessionId,
+          projectTag,
+          bankIds: recallTargets.map((t) => ({ role: t.role, bankId: t.bankId })),
+          recallMs: lastRecallMs,
+          factsCount: totalFactsCount,
+          injectedLines,
+          injectedChars,
+          recallErrors,
+        };
+        writeJson(resolve(sessionDir, "latest.json"), latest);
+        writeText(resolve(sessionDir, "latest-injected.md"), injectedBlock || "(no memory injected)");
 
-          const injectedBlock = `(recall error) ${error}`;
-          writeText(resolve(turnDir, "injected.md"), injectedBlock);
-          writeJson(resolve(turnDir, "meta.json"), {
-            ts,
-            turnId,
-            agentName,
-            sessionId,
-            projectTag,
-            bankId,
-            recallMs: lastRecallMs,
-            error,
-          });
-          writeJson(resolve(sessionDir, "latest.json"), {
-            ts,
-            turnId,
-            turnDir: `turns/${turnId}`,
-            agentName,
-            sessionId,
-            projectTag,
-            bankId,
-            recallMs: lastRecallMs,
-            factsCount: null,
-            injectedLines: 1,
-            injectedChars: injectedBlock.length,
-            recallError: error,
-          });
-          writeText(resolve(sessionDir, "latest-injected.md"), injectedBlock);
-          updateMemoryIndex(paths.runDir, knownAgents);
-          activeTurn = {
-            turnId,
-            ts,
-            sessionId,
-            agentName,
-            turnDir,
-            injectedBlock,
-            injectedLines: 1,
-            injectedChars: injectedBlock.length,
-            factsCount: null,
-            recallMs: lastRecallMs,
-          };
-        } catch {
-          // best effort
-        }
+        updateMemoryIndex(paths.runDir, knownAgents);
 
-        return undefined;
+        activeTurn = {
+          turnId,
+          ts,
+          sessionId,
+          agentName,
+          turnDir,
+          injectedBlock,
+          injectedLines,
+          injectedChars,
+          factsCount: totalFactsCount,
+          recallMs: lastRecallMs,
+        };
+      } catch {
+        // best effort
       }
+
+      if (!memoryBlock.trim()) return undefined;
+      const injected = `${event.systemPrompt}\n\nRecalled memories for ${agentName}. These are durable memories from Hindsight queries.\n${memoryBlock}`;
+      return { systemPrompt: injected };
     });
 
     pi.on("agent_end", async (event) => {
@@ -487,212 +458,236 @@ export function memoryExtensionFactory(
             : undefined,
       };
 
-      const t0 = performance.now();
-      let retainResponse: any;
-      let retainTransport: "direct" | "sdk" = "direct";
-      try {
+      const retainTargets = hasSplitBanks
+        ? agentName === "coordinator"
+          ? [
+              { role: "procedural", bankId: proceduralBankId },
+              { role: "personal", bankId: personalBankId },
+            ]
+          : [{ role: "procedural", bankId: proceduralBankId }]
+        : [{ role: "procedural", bankId: proceduralBankId }];
+
+      for (const target of retainTargets) {
+        const t0 = performance.now();
+        let retainResponse: any;
+        let retainTransport: "direct" | "sdk" = "direct";
         try {
-          retainResponse = await retainMemoriesDirect(baseUrl, bankId, {
-            items: [item],
-            async: retainCfg.async,
-            ...(retainCfg.updateMode !== "replace" ? { update_mode: retainCfg.updateMode } : {}),
-          });
-        } catch (directErr: any) {
-          retainTransport = "sdk";
-          await trace.append({
-            type: "memory_retain_update_mode_fallback",
-            projectTag,
-            bankId,
-            agentName,
-            sessionId,
-            updateMode: retainCfg.updateMode,
-            error: directErr?.message ?? String(directErr),
-          });
-
-          // Fallback to SDK batch retain (does not currently expose update_mode)
-          retainResponse = await hindsight.retainBatch(bankId, [item as any], {
-            async: retainCfg.async,
-            documentId,
-          });
-        }
-
-        const t1 = performance.now();
-        const operationIds: string[] = Array.isArray(retainResponse?.operation_ids)
-          ? retainResponse.operation_ids.filter((id: any) => typeof id === "string")
-          : typeof retainResponse?.operation_id === "string"
-            ? [retainResponse.operation_id]
-            : [];
-
-        await trace.append({
-          type: "memory_retain",
-          projectTag,
-          bankId,
-          agentName,
-          sessionId,
-          ms: Math.round(t1 - t0),
-          documentId,
-          transcriptChars: transcript.length,
-          tags: baseTags,
-          retainTransport,
-          updateMode: retainCfg.updateMode,
-          retainTimestamp,
-          operationIds,
-          recallMs: lastRecallMs,
-        });
-
-        // Human receipts + raw spine (retain)
-        try {
-          const turn = activeTurn;
-          const turnDir = turn?.turnDir ?? (() => {
-            const ts = new Date().toISOString();
-            const fallbackTurnId = `${safeTsId(ts)}-t${String(++turnSeq).padStart(4, "0")}`;
-            const sessionDir = memoryReceiptSessionDir(paths.runDir, agentName, sessionId);
-            const dir = resolve(sessionDir, "turns", fallbackTurnId);
-            mkdirSync(dir, { recursive: true });
-            writeJson(resolve(dir, "meta.json"), { ts, turnId: fallbackTurnId, agentName, sessionId, projectTag, bankId, note: "retain-only fallback" });
-            return dir;
-          })();
-
-          writeJson(resolve(turnDir, "retain-request.json"), {
-            bankId,
-            baseUrl,
-            async: retainCfg.async,
-            updateMode: retainCfg.updateMode,
-            item,
-          });
-          writeJson(resolve(turnDir, "retain-response.json"), retainResponse);
-
-          const lines: string[] = [];
-          lines.push("\n\n## retain");
-          lines.push(`documentId: ${documentId}`);
-          lines.push(`timestamp: ${retainTimestamp}`);
-          lines.push(`updateMode: ${retainCfg.updateMode}`);
-          lines.push(`async: ${String(retainCfg.async)}`);
-          lines.push(`transport: ${retainTransport}`);
-          lines.push(`operationIds: ${operationIds.length ? operationIds.join(", ") : "(none)"}`);
-          lines.push(`transcriptChars: ${transcript.length}`);
-          lines.push("");
-          lines.push("raw:");
-          lines.push("- retain-request.json");
-          lines.push("- retain-response.json");
-
-          // write/append receipt.md
-          const receiptPath = resolve(turnDir, "receipt.md");
-          const baseReceipt = existsSync(receiptPath) ? readFileSync(receiptPath, "utf8") : "";
-          const header = baseReceipt.trim()
-            ? baseReceipt
-            : [
-                "# ghosty memory receipt",
-                `ts: ${new Date().toISOString()}`,
-                `agent: ${agentName}`,
-                `session: ${sessionId}`,
-                `projectTag: ${projectTag}`,
-                `bankId: ${bankId}`,
-                "",
-                "## injected",
-                turn?.injectedBlock?.trim() ? turn.injectedBlock.trim() : "(no memory injected)",
-              ].join("\n");
-
-          writeText(receiptPath, header + "\n" + lines.join("\n"));
-
-          // keep latest pointers fresh
-          const sessionDir = memoryReceiptSessionDir(paths.runDir, agentName, sessionId);
           try {
-            const latestPath = resolve(sessionDir, "latest.json");
-            const raw = existsSync(latestPath) ? readFileSync(latestPath, "utf8") : "";
-            const latest = raw.trim() ? JSON.parse(raw) : {};
-            latest.retain = {
-              status: "attempted",
-              ms: Math.round(t1 - t0),
-              documentId,
-              retainTimestamp,
-              updateMode: retainCfg.updateMode,
+            retainResponse = await retainMemoriesDirect(baseUrl, target.bankId, {
+              items: [item],
               async: retainCfg.async,
-              transport: retainTransport,
-              operationIds,
-            };
-            writeJson(latestPath, latest);
-          } catch {
-            // ignore
-          }
-        } catch {
-          // best effort
-        }
-
-        const shouldPollOperations = retainCfg.async && operationIds.length > 0 && (operationsCfg.enabled || retainCfg.waitForCompletion);
-        if (shouldPollOperations) {
-          const timeoutMs = retainCfg.waitForCompletion ? retainCfg.waitTimeoutMs : operationsCfg.timeoutMs;
-          for (const operationId of operationIds) {
-            const started = Date.now();
-            let finalStatus = "pending";
-            let lastError: string | null = null;
-
-            while (Date.now() - started < timeoutMs) {
-              try {
-                const status = await getOperationStatusDirect(baseUrl, bankId, operationId);
-                finalStatus = String(status.status || "pending");
-                lastError = typeof status.error_message === "string" ? status.error_message : null;
-
-                if (finalStatus === "completed" || finalStatus === "failed" || finalStatus === "not_found") {
-                  break;
-                }
-              } catch (err: any) {
-                finalStatus = "error";
-                lastError = err?.message ?? String(err);
-                break;
-              }
-
-              await sleep(operationsCfg.pollIntervalMs);
-            }
-
-            const timedOut = finalStatus === "pending";
+              ...(retainCfg.updateMode !== "replace" ? { update_mode: retainCfg.updateMode } : {}),
+            });
+          } catch (directErr: any) {
+            retainTransport = "sdk";
             await trace.append({
-              type: "memory_operation_status",
+              type: "memory_retain_update_mode_fallback",
               projectTag,
-              bankId,
+              bankId: target.bankId,
+              bankRole: target.role,
               agentName,
               sessionId,
-              operationId,
-              status: timedOut ? "timeout" : finalStatus,
-              elapsedMs: Date.now() - started,
-              error: lastError,
+              updateMode: retainCfg.updateMode,
+              error: directErr?.message ?? String(directErr),
+            });
+
+            retainResponse = await hindsight.retainBatch(target.bankId, [item as any], {
+              async: retainCfg.async,
+              documentId,
             });
           }
-        }
 
-        // Update latency log with actual retain time
-        await trace.append({
-          type: "memory_latency",
-          projectTag,
-          bankId,
-          agentName,
-          sessionId,
-          recallMs: lastRecallMs,
-          retainMs: Math.round(t1 - t0),
-        });
-      } catch (err: any) {
-        const t1 = performance.now();
-        await trace.append({
-          type: "memory_retain_error",
-          projectTag,
-          bankId,
-          agentName,
-          sessionId,
-          ms: Math.round(t1 - t0),
-          documentId,
-          transcriptChars: transcript.length,
-          error: err?.message ?? String(err),
-        });
-        // Still log latency even on error
-        await trace.append({
-          type: "memory_latency",
-          projectTag,
-          bankId,
-          agentName,
-          sessionId,
-          recallMs: lastRecallMs,
-          retainMs: Math.round(t1 - t0),
-        });
+          const t1 = performance.now();
+          const operationIds: string[] = Array.isArray(retainResponse?.operation_ids)
+            ? retainResponse.operation_ids.filter((id: any) => typeof id === "string")
+            : typeof retainResponse?.operation_id === "string"
+              ? [retainResponse.operation_id]
+              : [];
+
+          await trace.append({
+            type: "memory_retain",
+            projectTag,
+            bankId: target.bankId,
+            bankRole: target.role,
+            agentName,
+            sessionId,
+            ms: Math.round(t1 - t0),
+            documentId,
+            transcriptChars: transcript.length,
+            tags: baseTags,
+            retainTransport,
+            updateMode: retainCfg.updateMode,
+            retainTimestamp,
+            operationIds,
+            recallMs: lastRecallMs,
+          });
+
+          try {
+            const turn = activeTurn;
+            const turnDir = turn?.turnDir ?? (() => {
+              const ts = new Date().toISOString();
+              const fallbackTurnId = `${safeTsId(ts)}-t${String(++turnSeq).padStart(4, "0")}`;
+              const sessionDir = memoryReceiptSessionDir(paths.runDir, agentName, sessionId);
+              const dir = resolve(sessionDir, "turns", fallbackTurnId);
+              mkdirSync(dir, { recursive: true });
+              writeJson(resolve(dir, "meta.json"), {
+                ts,
+                turnId: fallbackTurnId,
+                agentName,
+                sessionId,
+                projectTag,
+                bankIds: retainTargets.map((t) => ({ role: t.role, bankId: t.bankId })),
+                note: "retain-only fallback",
+              });
+              return dir;
+            })();
+
+            writeJson(resolve(turnDir, `retain-request-${target.role}.json`), {
+              bankId: target.bankId,
+              bankRole: target.role,
+              baseUrl,
+              async: retainCfg.async,
+              updateMode: retainCfg.updateMode,
+              item,
+            });
+            writeJson(resolve(turnDir, `retain-response-${target.role}.json`), retainResponse);
+
+            const lines: string[] = [];
+            lines.push("\n\n## retain");
+            lines.push(`bankRole: ${target.role}`);
+            lines.push(`bankId: ${target.bankId}`);
+            lines.push(`documentId: ${documentId}`);
+            lines.push(`timestamp: ${retainTimestamp}`);
+            lines.push(`updateMode: ${retainCfg.updateMode}`);
+            lines.push(`async: ${String(retainCfg.async)}`);
+            lines.push(`transport: ${retainTransport}`);
+            lines.push(`operationIds: ${operationIds.length ? operationIds.join(", ") : "(none)"}`);
+            lines.push(`transcriptChars: ${transcript.length}`);
+            lines.push("");
+            lines.push("raw:");
+            lines.push(`- retain-request-${target.role}.json`);
+            lines.push(`- retain-response-${target.role}.json`);
+
+            const receiptPath = resolve(turnDir, "receipt.md");
+            const baseReceipt = existsSync(receiptPath) ? readFileSync(receiptPath, "utf8") : "";
+            const header = baseReceipt.trim()
+              ? baseReceipt
+              : [
+                  "# ghosty memory receipt",
+                  `ts: ${new Date().toISOString()}`,
+                  `agent: ${agentName}`,
+                  `session: ${sessionId}`,
+                  `projectTag: ${projectTag}`,
+                  `bankIds: ${retainTargets.map((t) => `${t.role}=${t.bankId}`).join(", ")}`,
+                  "",
+                  "## injected",
+                  turn?.injectedBlock?.trim() ? turn.injectedBlock.trim() : "(no memory injected)",
+                ].join("\n");
+
+            writeText(receiptPath, header + "\n" + lines.join("\n"));
+
+            const sessionDir = memoryReceiptSessionDir(paths.runDir, agentName, sessionId);
+            try {
+              const latestPath = resolve(sessionDir, "latest.json");
+              const raw = existsSync(latestPath) ? readFileSync(latestPath, "utf8") : "";
+              const latest = raw.trim() ? JSON.parse(raw) : {};
+              latest.retain = latest.retain || {};
+              latest.retain[target.role] = {
+                status: "attempted",
+                bankId: target.bankId,
+                ms: Math.round(t1 - t0),
+                documentId,
+                retainTimestamp,
+                updateMode: retainCfg.updateMode,
+                async: retainCfg.async,
+                transport: retainTransport,
+                operationIds,
+              };
+              writeJson(latestPath, latest);
+            } catch {
+              // ignore
+            }
+          } catch {
+            // best effort
+          }
+
+          const shouldPollOperations = retainCfg.async && operationIds.length > 0 && (operationsCfg.enabled || retainCfg.waitForCompletion);
+          if (shouldPollOperations) {
+            const timeoutMs = retainCfg.waitForCompletion ? retainCfg.waitTimeoutMs : operationsCfg.timeoutMs;
+            for (const operationId of operationIds) {
+              const started = Date.now();
+              let finalStatus = "pending";
+              let lastError: string | null = null;
+
+              while (Date.now() - started < timeoutMs) {
+                try {
+                  const status = await getOperationStatusDirect(baseUrl, target.bankId, operationId);
+                  finalStatus = String(status.status || "pending");
+                  lastError = typeof status.error_message === "string" ? status.error_message : null;
+
+                  if (finalStatus === "completed" || finalStatus === "failed" || finalStatus === "not_found") {
+                    break;
+                  }
+                } catch (err: any) {
+                  finalStatus = "error";
+                  lastError = err?.message ?? String(err);
+                  break;
+                }
+
+                await sleep(operationsCfg.pollIntervalMs);
+              }
+
+              const timedOut = finalStatus === "pending";
+              await trace.append({
+                type: "memory_operation_status",
+                projectTag,
+                bankId: target.bankId,
+                bankRole: target.role,
+                agentName,
+                sessionId,
+                operationId,
+                status: timedOut ? "timeout" : finalStatus,
+                elapsedMs: Date.now() - started,
+                error: lastError,
+              });
+            }
+          }
+
+          await trace.append({
+            type: "memory_latency",
+            projectTag,
+            bankId: target.bankId,
+            bankRole: target.role,
+            agentName,
+            sessionId,
+            recallMs: lastRecallMs,
+            retainMs: Math.round(t1 - t0),
+          });
+        } catch (err: any) {
+          const t1 = performance.now();
+          await trace.append({
+            type: "memory_retain_error",
+            projectTag,
+            bankId: target.bankId,
+            bankRole: target.role,
+            agentName,
+            sessionId,
+            ms: Math.round(t1 - t0),
+            documentId,
+            transcriptChars: transcript.length,
+            error: err?.message ?? String(err),
+          });
+          await trace.append({
+            type: "memory_latency",
+            projectTag,
+            bankId: target.bankId,
+            bankRole: target.role,
+            agentName,
+            sessionId,
+            recallMs: lastRecallMs,
+            retainMs: Math.round(t1 - t0),
+          });
+        }
       }
     });
 

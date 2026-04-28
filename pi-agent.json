@@ -4,7 +4,7 @@
     "runtime": {
       "vllmBaseUrl": "http://localhost:8002/v1",
       "hindsightBaseUrl": "http://localhost:8888",
-      "hindsightBankId": "pi-ghosty",
+      "hindsightBankId": "pi-ghosty-procedural",
       "model": {
         "contextWindow": 131072,
         "maxTokens": 8192
@@ -45,12 +45,20 @@
       "operations": {
         "enabled": true,
         "pollIntervalMs": 1000,
-        "timeoutMs": 20000
+        "timeoutMs": 60000
       },
       "reflect": {
         "enabled": false,
         "mode": "manual",
         "budget": "low"
+      },
+      "banks": {
+        "procedural": {
+          "bankId": "pi-ghosty-procedural"
+        },
+        "personal": {
+          "bankId": "pi-ghosty-personal"
+        }
       }
     },
     "workflowMonitor": {
@@ -65,24 +73,24 @@
   },
   "agents": {
     "coordinator": {
-      "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch"],
+      "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch", "write", "edit"],
       "thinkingLevel": "medium",
       "defaultModel": "openai-codex/gpt-5.4-mini"
     },
     "coder": {
       "tools": ["read", "grep", "find", "ls", "edit", "write", "bash"],
-      "thinkingLevel": "low",
-      "defaultModel": "openai-codex/gpt-5.3-codex"
+      "thinkingLevel": "high",
+      "defaultModel": "openai-codex/gpt-5.4-mini"
     },
     "researcher": {
       "tools": ["read", "grep", "find", "ls", "write", "edit", "web_search"],
       "thinkingLevel": "medium",
-      "defaultModel": "openai-codex/gpt-5.2"
+      "defaultModel": "openai-codex/gpt-5.4-mini"
     },
     "reviewer": {
       "tools": ["read", "grep", "find", "ls", "write", "edit"],
       "thinkingLevel": "medium",
-      "defaultModel": "openai-codex/gpt-5.2"
+      "defaultModel": "openai-codex/gpt-5.4-mini"
     },
     "memory": {
       "tools": ["read", "grep", "find", "ls"],

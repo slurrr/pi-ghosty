@@ -1,32 +1,45 @@
 # Current Goal
-- Make pi-ghosty useful day to day by automatically monitoring workflow friction/wins and surfacing screened candidates/winners on a heartbeat.
+- Keep pi-ghosty stable enough to use day to day while the memory stack is under test.
+- Use hindsight split-bank memory cleanly: procedural for peers, personal + procedural for coordinator.
 
 # Current State
-- The repo is now extension-only: `src/runtime/*`, `src/index.ts`, and `src/tui/` have been removed.
-- Workflow monitor is implemented for the extension path and peer tools path using `src/workflow/workflowMonitor.ts`.
-- The monitor scans `runDir/data/traces/**`, scores repeatable pain/win signals, and writes durable summaries under `runDir/data/workflow/`.
-- The coordinator path hooks the monitor on `session_start` and heartbeat-style input events in `.pi/extensions/ghosty/index.ts`.
-- `/ghosty workflow` is available in extension mode.
-- Shared delegation helpers now live under `src/delegation/*` instead of the deleted runtime directory.
-- `npm run typecheck` passes.
-- `npm run smoke:pi-ext` passes.
-- Extension-only retirement docs now reflect the final state:
-  - `docs/reference/runtime_retirement_gaps.md`
-  - `docs/specs/0008-extension-only-retirement.md`
-- Added a delegation postmortem at `docs/reference/delegation_postmortem.md` covering prompt visibility, coordinator injection timing, durable report gaps, and peer overruns.
+- Split-bank memory is wired and verified in live receipts/traces:
+  - procedural bank: `pi-ghosty-procedural`
+  - personal bank: `pi-ghosty-personal`
+  - coordinator injects personal first, then procedural
+  - peers inject procedural only
+- Missions were set via the node scripts and are visible in backend/live memory artifacts.
+- `tagsMatch: "all"` remains the recall filter; tag templates are still hardcoded in `src/extensions/memoryExtension.ts`.
+- Added a backend status command that queries hindsight directly:
+  - `scripts/memory-status.mjs`
+  - `npm run memory` / `npm run memory:status`
+- Kept the local receipts viewer as:
+  - `npm run memory:receipts`
+- The old `npm run memory` receipts behavior was replaced because it was noisy / not the best backend check.
+- Hindsight previously core dumped under heavy load.
+- The crash was a real `SIGSEGV` in native/runtime land, not a clean shutdown.
+- Useful coredump facts recorded from `coredumpctl info 3148743`:
+  - process: `hindsight-api`
+  - signal: `11 (SEGV)`
+  - crash point: `gen_dealloc` / `uvloop` idle callback path
+  - lots of worker threads parked in `torch/libgomp.so` and `onnxruntime`
+  - coredump file exists at `/var/lib/systemd/coredump/core.hindsight-api.1000.033aaa856966415689a83fd610b1c8bb.3148743.1777080086000000.zst`
+- The long retain job that likely pushed it over the edge was huge (~99k tokens), with slow retain extraction and consolidation.
+- Hindsight is back up after restart and the memory status script works again.
 
 # Decisions
-- Use deterministic, rule-based screening first; no LLM analysis loop for the workflow monitor v1.
-- Keep raw capture append-only and store review snapshots as JSON under `runDir/data/workflow/`.
-- Surface only screened candidates/winners to the user; keep everything else parked in background artifacts.
-- Keep the workflow monitor best-effort and non-blocking.
-- The old runtime is retired; the live path is the Pi extension plus shared extension-owned helpers.
+- Treat the crash as an environment / native-stack stability issue, not a repo logic bug.
+- Do not keep digging for a surgical fix unless the same crash repeats after the env upgrade.
+- Use backend status queries for live config verification; use receipts/traces for behavior verification.
+- Keep the checkpoint short and factual so the crash doesn’t get rediscovered from scratch.
 
 # Open Problems
-- Decide whether to prune or rewrite historical docs that still mention the old runtime for context.
-- Decide whether to keep the extension-only retirement docs as permanent record or collapse them into the main architecture docs.
+- Decide whether to upgrade/re-pin the inference/memory stack now that a newer vLLM/transformers combo is available.
+- Decide whether to add watchdog / auto-restart behavior for hindsight if long retain jobs can still wedge it.
+- If the crash repeats, collect coredump metadata first before doing more manual forensics.
 
 # Resume Instructions
-1. If continuing workflow work, inspect `src/workflow/workflowMonitor.ts`, `.pi/extensions/ghosty/index.ts`, and `src/extensions/peerToolsExtension.ts` first.
-2. Re-run `npm run typecheck` and `npm run smoke:pi-ext` after any workflow-monitor edits.
-3. If simplifying the repo, consolidate or remove the unused runtime workflow-monitor file next.
+1. For live backend config, run `npm run memory:status`.
+2. For recent run evidence, run `npm run memory:receipts`.
+3. If hindsight dies again, inspect `coredumpctl info <pid>` first, then only do `gdb` if the metadata is still ambiguous.
+4. If the env upgrade happens, re-verify split-bank behavior and memory quality after the restart.

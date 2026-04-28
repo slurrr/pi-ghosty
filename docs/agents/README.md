@@ -4,6 +4,8 @@ pi-ghosty runs one visible user-facing agent (**coordinator**) and several speci
 
 Canonical tool allowlists live in `pi-agent.json`.
 
+When you want to record evidence from a live loop before hardening the contract, use `../observations/`.
+
 ## Agents
 - `coordinator`: talks to the user; delegates to peers via the `delegate` tool.
 - `coder`: edits code and runs commands; reports via `peer_report`.

@@ -399,8 +399,8 @@ export default function (pi: any) {
       "top:",
       ...(top.length > 0
         ? top.map(
-            (c) => `- ${c.status} ${c.kind}/${c.category} score=${c.score} count=${c.count} title=${c.title} id=${c.id}`,
-          )
+          (c) => `- ${c.status} ${c.kind}/${c.category} score=${c.score} count=${c.count} title=${c.title} id=${c.id}`,
+        )
         : ["- none"]),
     ];
     return lines.join("\n");
@@ -983,8 +983,8 @@ export default function (pi: any) {
 
     const presetLines = Object.keys(presets).length > 0
       ? Object.entries(presets)
-          .sort((a, b) => a[0].localeCompare(b[0]))
-          .map(([name, patterns]) => `- ${name}: ${patterns.join(", ") || "none"}`)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([name, patterns]) => `- ${name}: ${patterns.join(", ") || "none"}`)
       : ["- none configured"];
 
     return [
@@ -1076,7 +1076,7 @@ export default function (pi: any) {
     if (infos.length === 0) {
       await traceEvent(ctx, { type: "session_route_decision", peerName, action: "new", reason: "no sessions" });
       return {
-        sessionManager: SessionManager.continueRecent(ctx.cwd, peerSessionDir),
+        sessionManager: SessionManager.create(ctx.cwd, peerSessionDir),
         sessionState: "new",
         routing: { action: "new", reason: "no sessions", confidence: 1 },
       };
@@ -1116,104 +1116,53 @@ export default function (pi: any) {
       busyCount: all.length - idle.length,
     });
 
-    if (candidates.length === 0) {
-      const sm = SessionManager.continueRecent(ctx.cwd, peerSessionDir);
-      sm.newSession();
-      await traceEvent(ctx, { type: "session_route_decision", peerName, action: "new", reason: "no catalog candidates" });
-      return { sessionManager: sm, sessionState: "new", routing: { action: "new", reason: "no catalog candidates", confidence: 1 } };
-    }
+    const preferredModel = config.agents?.[peerName]?.defaultModel?.trim();
+    if (preferredModel) {
+      const preferredResolved = resolveModelSpecSyncLike(preferredModel, ctx, idle as any);
+      const preferredMatch = preferredResolved
+        ? idle.find((c) => c.model && modelKey(c.model) === modelKey(preferredResolved) && c.sessionFile)
+        : undefined;
 
-    if (candidates.length === 1) {
-      const chosen = candidates[0];
-      if (chosen.sessionFile) {
-        await traceEvent(ctx, { type: "session_route_decision", peerName, action: "resume", chosenSessionId: chosen.sessionId, reason: "single candidate" });
+      if (preferredMatch?.sessionFile) {
+        await traceEvent(ctx, {
+          type: "session_route_decision",
+          peerName,
+          action: "resume",
+          chosenSessionId: preferredMatch.sessionId,
+          reason: "preferred model match",
+        });
         return {
-          sessionManager: SessionManager.open(chosen.sessionFile, peerSessionDir),
+          sessionManager: SessionManager.open(preferredMatch.sessionFile, peerSessionDir),
           sessionState: "resumed",
-          routing: { action: "resume", reason: "single candidate", confidence: 1 },
+          routing: { action: "resume", reason: "preferred model match", confidence: 1 },
         };
       }
+
+      const sm = SessionManager.create(ctx.cwd, peerSessionDir);
+      await traceEvent(ctx, {
+        type: "session_route_decision",
+        peerName,
+        action: "new",
+        reason: "preferred model not found",
+      });
+      return {
+        sessionManager: sm,
+        sessionState: "new",
+        routing: { action: "new", reason: "preferred model not found", confidence: 1 },
+      };
     }
 
-    const prompt = [
-      "Return strict JSON only.",
-      "Choose best session routing action.",
-      "Output schema: {\"action\":\"resume\"|\"new\",\"sessionId\"?:string,\"reason\"?:string,\"confidence\"?:number}",
-      "Rules:",
-      "- Advisory only: weather is for warnings, not hard constraints.",
-      "- Prefer resume if semantic fit is strong and session is not clearly drifting/stale.",
-      "- Choose new if no candidate is a good fit.",
-      "",
-      `peerName: ${peerName}`,
-      `projectTag: ${config.defaults.projectTag}`,
-      `task: ${request.task}`,
-      `context: ${request.context || ""}`,
-      "",
-      "Candidates:",
-      ...candidates.map((c) => {
-        const name = c.sessionName || c.semantic?.title || "(unnamed)";
-        const tags = (c.semantic?.tags || []).join(",");
-        const weather = c.semantic?.weather;
-        const weatherText = weather ? `${weather.state}:${weather.driftScore.toFixed(2)}` : "none";
-        return `- sessionId=${c.sessionId} name=${JSON.stringify(name)} lastUsedAt=${c.lastUsedAt} weather=${weatherText} tags=${JSON.stringify(tags)} summary=${JSON.stringify((c.semantic?.summary || "").slice(0, 240))}`;
-      }),
-    ].join("\n");
-
-    try {
-      const raw = await askJson(prompt, ctx);
-      const parsed = safeJsonParse<any>(raw);
-      const decision = routingDecisionSchema.safeParse(parsed);
-      if (decision.success) {
-        if (decision.data.action === "new") {
-          const sm = SessionManager.continueRecent(ctx.cwd, peerSessionDir);
-          sm.newSession();
-          await traceEvent(ctx, {
-            type: "session_route_decision",
-            peerName,
-            action: "new",
-            reason: decision.data.reason,
-            confidence: decision.data.confidence,
-          });
-          return {
-            sessionManager: sm,
-            sessionState: "new",
-            routing: { action: "new", reason: decision.data.reason, confidence: decision.data.confidence },
-          };
-        }
-
-        if ((decision.data.action === "resume" || decision.data.action === "compact_then_resume") && decision.data.sessionId) {
-          const chosen = candidates.find((c) => c.sessionId === decision.data.sessionId);
-          if (chosen?.sessionFile) {
-            await traceEvent(ctx, {
-              type: "session_route_decision",
-              peerName,
-              action: "resume",
-              chosenSessionId: chosen.sessionId,
-              reason: decision.data.reason,
-              confidence: decision.data.confidence,
-            });
-            return {
-              sessionManager: SessionManager.open(chosen.sessionFile, peerSessionDir),
-              sessionState: "resumed",
-              routing: {
-                action: "resume",
-                reason: decision.data.reason,
-                confidence: decision.data.confidence,
-              },
-            };
-          }
-        }
-      }
-    } catch (err: any) {
-      await traceEvent(ctx, { type: "session_route_error", peerName, error: err?.message ?? String(err) });
-    }
-
-    const mostRecent = [...infos].sort((a: any, b: any) => +b.modified - +a.modified)[0];
-    await traceEvent(ctx, { type: "session_route_decision", peerName, action: "resume", reason: "fallback most recent" });
+    const sm = SessionManager.create(ctx.cwd, peerSessionDir);
+    await traceEvent(ctx, {
+      type: "session_route_decision",
+      peerName,
+      action: "new",
+      reason: "no peer default model",
+    });
     return {
-      sessionManager: SessionManager.open(mostRecent.path, peerSessionDir),
-      sessionState: "resumed",
-      routing: { action: "resume", reason: "fallback most recent", confidence: 0 },
+      sessionManager: sm,
+      sessionState: "new",
+      routing: { action: "new", reason: "no peer default model", confidence: 1 },
     };
   }
 
@@ -1306,234 +1255,234 @@ export default function (pi: any) {
 
     try {
       return await sessionMutex.runExclusive(peerSessionId, async () => {
-      if (busySessionIds.has(peerSessionId)) {
-        throw new Error(`Peer session ${peerSessionId} is already busy`);
-      }
+        if (busySessionIds.has(peerSessionId)) {
+          throw new Error(`Peer session ${peerSessionId} is already busy`);
+        }
 
-      busySessionIds.add(peerSessionId);
-      let entry = await ensureCatalogEntry(parsed.peerName, peerSessionManager, ctx);
+        busySessionIds.add(peerSessionId);
+        let entry = await ensureCatalogEntry(parsed.peerName, peerSessionManager, ctx);
 
-      const peerParts = loadPeerPromptParts(projectDir, parsed.peerName);
-      const services = await createAgentSessionServices({
-        cwd: ctx.cwd,
-        resourceLoaderOptions: {
-          noExtensions: true,
-          extensionFactories: [
-            samplingExtensionFactory(config, parsed.peerName, {
-              runDir,
-              sessionId: peerSessionId,
-              projectTag: config.defaults.projectTag,
-              traceSampling: false,
-            }),
-            ...(memoryDisabled ? [] : [memoryExtensionFactory(memoryEnv, config, parsed.peerName, peerSessionId, { runDir })]),
-            roleSystemPromptExtensionFactory(parsed.peerName),
-          ],
-          agentsFilesOverride: (_current) => ({ agentsFiles: [] }),
-          appendSystemPrompt: resolve(projectDir, ".pi", "APPEND_SYSTEM.md"),
-          additionalSkillPaths: [resolve(projectDir, ".pi", "skills")],
-          appendSystemPromptOverride: (base) => {
-            const out = [...base];
-            if (peerParts.joined.trim()) out.push(peerParts.joined);
-            return out;
+        const peerParts = loadPeerPromptParts(projectDir, parsed.peerName);
+        const services = await createAgentSessionServices({
+          cwd: ctx.cwd,
+          resourceLoaderOptions: {
+            noExtensions: true,
+            extensionFactories: [
+              samplingExtensionFactory(config, parsed.peerName, {
+                runDir,
+                sessionId: peerSessionId,
+                projectTag: config.defaults.projectTag,
+                traceSampling: false,
+              }),
+              ...(memoryDisabled ? [] : [memoryExtensionFactory(memoryEnv, config, parsed.peerName, peerSessionId, { runDir })]),
+              roleSystemPromptExtensionFactory(parsed.peerName),
+            ],
+            agentsFilesOverride: (_current) => ({ agentsFiles: [] }),
+            appendSystemPrompt: resolve(projectDir, ".pi", "APPEND_SYSTEM.md"),
+            additionalSkillPaths: [resolve(projectDir, ".pi", "skills")],
+            appendSystemPromptOverride: (base) => {
+              const out = [...base];
+              if (peerParts.joined.trim()) out.push(peerParts.joined);
+              return out;
+            },
           },
-        },
-      });
+        });
 
-      const { session } = await createAgentSessionFromServices({
-        services,
-        sessionManager: peerSessionManager,
-        customTools: [
-          createPeerReportTool(async (output) => {
-            const pending = pendingDelegations.get(jobId);
-            if (!pending?.finalize) return;
-            await pending.finalize(output, "tool");
-          }),
-        ],
-      });
+        const { session } = await createAgentSessionFromServices({
+          services,
+          sessionManager: peerSessionManager,
+          customTools: [
+            createPeerReportTool(async (output) => {
+              const pending = pendingDelegations.get(jobId);
+              if (!pending?.finalize) return;
+              await pending.finalize(output, "tool");
+            }),
+          ],
+        });
 
-      const allowedTools = (config.agents?.[parsed.peerName]?.tools ?? []) as string[];
-      session.setActiveToolsByName([...allowedTools, "peer_report"]);
+        const allowedTools = (config.agents?.[parsed.peerName]?.tools ?? []) as string[];
+        session.setActiveToolsByName([...allowedTools, "peer_report"]);
 
-      const before = session.messages.length;
+        const before = session.messages.length;
 
-      let resolveCompletion!: (report: DelegationReport) => void;
-      let rejectCompletion!: (error: Error) => void;
-      const completion = new Promise<DelegationReport>((resolve, reject) => {
-        resolveCompletion = resolve;
-        rejectCompletion = reject;
-      });
+        let resolveCompletion!: (report: DelegationReport) => void;
+        let rejectCompletion!: (error: Error) => void;
+        const completion = new Promise<DelegationReport>((resolve, reject) => {
+          resolveCompletion = resolve;
+          rejectCompletion = reject;
+        });
 
-      const finalize = async (output: PeerOutput, reportSource: "tool" | "text", rawText?: string): Promise<DelegationReport> => {
-        const pending = pendingDelegations.get(jobId);
-        if (!pending) return completion;
-        if (pending.settled) return completion;
-        pending.settled = true;
+        const finalize = async (output: PeerOutput, reportSource: "tool" | "text", rawText?: string): Promise<DelegationReport> => {
+          const pending = pendingDelegations.get(jobId);
+          if (!pending) return completion;
+          if (pending.settled) return completion;
+          pending.settled = true;
 
-        const completedAt = new Date().toISOString();
-        let report: DelegationReport = {
-          ...launch,
-          coordinatorSessionId,
-          peerSessionId,
-          reportSource,
-          rawText,
-          output,
-          reportPath: reportPath(parsed.peerName, jobId, completedAt),
-          completedAt,
+          const completedAt = new Date().toISOString();
+          let report: DelegationReport = {
+            ...launch,
+            coordinatorSessionId,
+            peerSessionId,
+            reportSource,
+            rawText,
+            output,
+            reportPath: reportPath(parsed.peerName, jobId, completedAt),
+            completedAt,
+          };
+
+          try {
+            report.reportPath = writeDelegationReport(runDir, report);
+          } catch (err: any) {
+            await traceEventForSession(coordinatorSessionId, {
+              type: "delegate_report_write_error",
+              peerName: parsed.peerName,
+              jobId,
+              error: err?.message ?? String(err),
+            });
+          }
+
+          try {
+            const stats = session.getSessionStats();
+            const contextUsage: any = session.getContextUsage();
+            const compactionsAfter = peerSessionManager.getEntries().filter((e: any) => e.type === "compaction").length;
+            entry = (await catalogStore.patch(parsed.peerName as any, peerSessionId, {
+              lastUsedAt: new Date().toISOString(),
+              model: session.model ? { provider: session.model.provider, id: session.model.id } : undefined,
+              stats: {
+                messageCount: stats.totalMessages,
+                toolCalls: stats.toolCalls,
+                contextPercent: typeof contextUsage?.percent === "number" ? contextUsage.percent : null,
+                compactions: compactionsAfter,
+              },
+            })) as CatalogEntry;
+
+            let enriched = entry;
+            try {
+              enriched = await maybeEnrichSemantic(entry, parsed, output.summary, ctx);
+            } catch {
+              enriched = entry;
+            }
+
+            try {
+              const title = enriched.semantic?.title || `${parsed.peerName} session`;
+              const desiredName = formatSessionName(parsed.peerName, title);
+              peerSessionManager.appendSessionInfo(desiredName);
+              await catalogStore.patch(parsed.peerName as any, peerSessionId, {
+                sessionName: desiredName,
+              });
+            } catch {
+              // ignore
+            }
+          } catch (err: any) {
+            await traceEventForSession(coordinatorSessionId, {
+              type: "delegate_postprocess_error",
+              peerName: parsed.peerName,
+              jobId,
+              error: err?.message ?? String(err),
+            });
+          }
+
+          await traceEventForSession(coordinatorSessionId, {
+            type: "delegate_end",
+            peerName: parsed.peerName,
+            sessionId: peerSessionId,
+            jobId,
+            routingAction: routing.action,
+            reportSource,
+          });
+
+          try {
+            pi.sendMessage(
+              {
+                customType: delegationMessageRendererType,
+                content: formatReportMessage(report),
+                display: true,
+                details: report,
+              },
+              { triggerTurn: true, deliverAs: "followUp" },
+            );
+          } catch (err: any) {
+            await traceEventForSession(coordinatorSessionId, {
+              type: "delegate_report_injection_error",
+              peerName: parsed.peerName,
+              jobId,
+              error: err?.message ?? String(err),
+            });
+          }
+
+          try {
+            pending.resolve(report);
+          } finally {
+            busySessionIds.delete(peerSessionId);
+            release();
+            pendingDelegations.delete(jobId);
+          }
+
+          return report;
         };
 
-        try {
-          report.reportPath = writeDelegationReport(runDir, report);
-        } catch (err: any) {
-          await traceEventForSession(coordinatorSessionId, {
-            type: "delegate_report_write_error",
-            peerName: parsed.peerName,
-            jobId,
-            error: err?.message ?? String(err),
-          });
-        }
+        const pending = {
+          launch,
+          coordinatorSessionId,
+          peerSessionId,
+          peerSessionManager,
+          request: parsed,
+          prompt: delegationMessage,
+          release,
+          settled: false,
+          completion,
+          resolve: resolveCompletion,
+          reject: rejectCompletion,
+          finalize,
+        };
+        pendingDelegations.set(jobId, pending);
 
-        try {
-          const stats = session.getSessionStats();
-          const contextUsage: any = session.getContextUsage();
-          const compactionsAfter = peerSessionManager.getEntries().filter((e: any) => e.type === "compaction").length;
-          entry = (await catalogStore.patch(parsed.peerName as any, peerSessionId, {
-            lastUsedAt: new Date().toISOString(),
-            model: session.model ? { provider: session.model.provider, id: session.model.id } : undefined,
-            stats: {
-              messageCount: stats.totalMessages,
-              toolCalls: stats.toolCalls,
-              contextPercent: typeof contextUsage?.percent === "number" ? contextUsage.percent : null,
-              compactions: compactionsAfter,
-            },
-          })) as CatalogEntry;
-
-          let enriched = entry;
-          try {
-            enriched = await maybeEnrichSemantic(entry, parsed, output.summary, ctx);
-          } catch {
-            enriched = entry;
-          }
-
-          try {
-            const title = enriched.semantic?.title || `${parsed.peerName} session`;
-            const desiredName = formatSessionName(parsed.peerName, title);
-            peerSessionManager.appendSessionInfo(desiredName);
-            await catalogStore.patch(parsed.peerName as any, peerSessionId, {
-              sessionName: desiredName,
-            });
-          } catch {
-            // ignore
-          }
-        } catch (err: any) {
-          await traceEventForSession(coordinatorSessionId, {
-            type: "delegate_postprocess_error",
-            peerName: parsed.peerName,
-            jobId,
-            error: err?.message ?? String(err),
-          });
-        }
-
-        await traceEventForSession(coordinatorSessionId, {
-          type: "delegate_end",
+        await traceEvent(ctx, {
+          type: "delegate_start",
           peerName: parsed.peerName,
           sessionId: peerSessionId,
           jobId,
           routingAction: routing.action,
-          reportSource,
         });
 
-        try {
-          pi.sendMessage(
-            {
-              customType: delegationMessageRendererType,
-              content: formatReportMessage(report),
-              display: true,
-              details: report,
-            },
-            { triggerTurn: true, deliverAs: "followUp" },
-          );
-        } catch (err: any) {
-          await traceEventForSession(coordinatorSessionId, {
-            type: "delegate_report_injection_error",
-            peerName: parsed.peerName,
-            jobId,
-            error: err?.message ?? String(err),
-          });
-        }
+        const promptPromise = session.prompt(delegationMessage, { source: "extension" });
+        promptPromise
+          .then(async () => {
+            const current = pendingDelegations.get(jobId);
+            if (!current || current.settled) return;
 
-        try {
-          pending.resolve(report);
-        } finally {
-          busySessionIds.delete(peerSessionId);
-          release();
-          pendingDelegations.delete(jobId);
-        }
-
-        return report;
-      };
-
-      const pending = {
-        launch,
-        coordinatorSessionId,
-        peerSessionId,
-        peerSessionManager,
-        request: parsed,
-        prompt: delegationMessage,
-        release,
-        settled: false,
-        completion,
-        resolve: resolveCompletion,
-        reject: rejectCompletion,
-        finalize,
-      };
-      pendingDelegations.set(jobId, pending);
-
-      await traceEvent(ctx, {
-        type: "delegate_start",
-        peerName: parsed.peerName,
-        sessionId: peerSessionId,
-        jobId,
-        routingAction: routing.action,
-      });
-
-      const promptPromise = session.prompt(delegationMessage, { source: "extension" });
-      promptPromise
-        .then(async () => {
-          const current = pendingDelegations.get(jobId);
-          if (!current || current.settled) return;
-
-          const newMessages: any[] = session.messages.slice(before);
-          let output: PeerOutput | undefined;
-          let reportSource: "tool" | "text" = "text";
-          for (let i = newMessages.length - 1; i >= 0; i--) {
-            const m = newMessages[i];
-            if (m?.role !== "toolResult" || m?.toolName !== "peer_report") continue;
-            const parsedOutput = peerOutputSchema.safeParse(m?.details);
-            if (parsedOutput.success) {
-              output = parsedOutput.data;
-              reportSource = "tool";
-              break;
+            const newMessages: any[] = session.messages.slice(before);
+            let output: PeerOutput | undefined;
+            let reportSource: "tool" | "text" = "text";
+            for (let i = newMessages.length - 1; i >= 0; i--) {
+              const m = newMessages[i];
+              if (m?.role !== "toolResult" || m?.toolName !== "peer_report") continue;
+              const parsedOutput = peerOutputSchema.safeParse(m?.details);
+              if (parsedOutput.success) {
+                output = parsedOutput.data;
+                reportSource = "tool";
+                break;
+              }
             }
-          }
 
-          if (!output) {
-            output = { summary: lastAssistantText(session.messages) };
-          }
+            if (!output) {
+              output = { summary: lastAssistantText(session.messages) };
+            }
 
-          await current.finalize(output, reportSource);
-        })
-        .catch(async (err: any) => {
-          const current = pendingDelegations.get(jobId);
-          if (!current || current.settled) return;
-          const message = err?.message ?? String(err);
-          await current.finalize({ summary: `delegation failed: ${message}` }, "text", message);
-        });
+            await current.finalize(output, reportSource);
+          })
+          .catch(async (err: any) => {
+            const current = pendingDelegations.get(jobId);
+            if (!current || current.settled) return;
+            const message = err?.message ?? String(err);
+            await current.finalize({ summary: `delegation failed: ${message}` }, "text", message);
+          });
 
-      return {
-        launch,
-        completion,
-      };
-    });
+        return {
+          launch,
+          completion,
+        };
+      });
     } catch (err) {
       busySessionIds.delete(peerSessionId);
       release();

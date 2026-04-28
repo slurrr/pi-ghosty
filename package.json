@@ -18,7 +18,9 @@
     "observations": "node scripts/set-observations-mission.mjs",
     "observations:stable": "node scripts/set-observations-mission.mjs \"Observations are stable, reusable facts about the user, project, preferences, decisions, recurring patterns, and operational constraints. Ignore one-off banter and ephemeral chatter.\"",
     "smoke:pi-ext": "node scripts/smoke-pi-extension.mjs",
-    "memory": "node scripts/memory-receipts.mjs"
+    "memory": "node scripts/memory-status.mjs",
+    "memory:status": "node scripts/memory-status.mjs",
+    "memory:receipts": "node scripts/memory-receipts.mjs"
   },
   "keywords": [],
   "author": "",

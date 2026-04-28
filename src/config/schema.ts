@@ -76,6 +76,18 @@ export const memoryReflectSchema = z.object({
   budget: memoryBudgetSchema.default("low"),
 });
 
+export const memoryBankSchema = z.object({
+  bankId: z.string().min(1),
+});
+
+export const memoryBanksSchema = z.object({
+  procedural: memoryBankSchema.default({ bankId: "pi-ghosty-procedural" }),
+  personal: memoryBankSchema.default({ bankId: "pi-ghosty-personal" }),
+}).default({
+  procedural: { bankId: "pi-ghosty-procedural" },
+  personal: { bankId: "pi-ghosty-personal" },
+});
+
 export const memoryDefaultsSchema = z.object({
   recall: memoryRecallSchema.default({
     maxTokens: 2048,
@@ -115,6 +127,7 @@ export const memoryDefaultsSchema = z.object({
     mode: "manual",
     budget: "low",
   }),
+  banks: memoryBanksSchema,
 });
 
 export const workflowMonitorSchema = z.object({

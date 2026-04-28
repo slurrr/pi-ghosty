@@ -1,0 +1,666 @@
+           PID: [0;1;39m3148743[0m (hindsight-api)
+           UID: 1000 (poop)
+           GID: 1000 (poop)
+        Signal: 11 (SEGV)
+     Timestamp: Fri 2026-04-24 19:21:26 MDT (1h 34min ago)
+  Command Line: /home/poop/code/dev/agentmux/.venv/bin/python3 /home/poop/code/dev/agentmux/.venv/bin/hindsight-api --host 127.0.0.1 --port 8888 --no-access-log
+    Executable: [0;1;39m/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12[0m
+ Control Group: /user.slice/user-1000.slice/user@1000.service/app.slice/kitty-30889-0.scope
+          Unit: user@1000.service
+     User Unit: kitty-30889-0.scope
+         Slice: user-1000.slice
+     Owner UID: 1000 (poop)
+       Boot ID: 033aaa856966415689a83fd610b1c8bb
+    Machine ID: 67ed27aecb9045cbbb5f193848ac2484
+      Hostname: fedora
+       Storage: /var/lib/systemd/coredump/core.hindsight-api.1000.033aaa856966415689a83fd610b1c8bb.3148743.1777080086000000.zst (present)[0m
+  Size on Disk: 1.2G
+       Message: Process 3148743 (hindsight-api) of user 1000 dumped core.
+                
+                Module /home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 without build-id.
+                Module libpcre2-8.so.0 from rpm pcre2-10.47-1.fc43.x86_64
+                Module libselinux.so.1 from rpm libselinux-3.9-5.fc43.x86_64
+                Module libkrb5support.so.0 from rpm krb5-1.22.2-3.fc43.x86_64
+                Module libcrypto.so.3 from rpm openssl-3.5.4-2.fc43.x86_64
+                Module libkeyutils.so.1 from rpm keyutils-1.6.3-6.fc43.x86_64
+                Module libcom_err.so.2 from rpm e2fsprogs-1.47.3-2.fc43.x86_64
+                Module libk5crypto.so.3 from rpm krb5-1.22.2-3.fc43.x86_64
+                Module libkrb5.so.3 from rpm krb5-1.22.2-3.fc43.x86_64
+                Module libbasicobjects.so.0 from rpm ding-libs-0.6.2-59.fc43.x86_64
+                Module libpath_utils.so.1 from rpm ding-libs-0.6.2-59.fc43.x86_64
+                Module libcollection.so.4 from rpm ding-libs-0.6.2-59.fc43.x86_64
+                Module libgssapi_krb5.so.2 from rpm krb5-1.22.2-3.fc43.x86_64
+                Module libgssrpc.so.4 from rpm krb5-1.22.2-3.fc43.x86_64
+                Module libverto.so.1 from rpm libverto-0.3.2-11.fc43.x86_64
+                Module libini_config.so.5 from rpm ding-libs-0.6.2-59.fc43.x86_64
+                Module libref_array.so.1 from rpm ding-libs-0.6.2-59.fc43.x86_64
+                Module proxymech.so from rpm gssproxy-0.9.2-9.fc43.x86_64
+                Module libnss_resolve.so.2 from rpm systemd-258.7-1.fc43.x86_64
+                Module libnss_mdns4_minimal.so.2 from rpm nss-mdns-0.15.1-27.fc43.x86_64
+                Module libcap.so.2 from rpm libcap-2.76-4.fc43.x86_64
+                Module libnss_myhostname.so.2 from rpm systemd-258.7-1.fc43.x86_64
+                Module libsharpyuv.994c9d2c.so.0 without build-id.
+                Module libz.03209371.so.1 without build-id.
+                Module libwebp.87a45f40.so.7 without build-id.
+                Module libjpeg.4af9affd.so.8 without build-id.
+                Module libpng16.c2edc9e1.so.16 without build-id.
+                Module libfribidi.so.0 from rpm fribidi-1.0.16-3.fc43.x86_64
+                Module libz.so.1 from rpm zlib-ng-2.3.3-2.fc43.x86_64
+                Module _message.abi3.so without build-id.
+                Stack trace of thread 3148743:
+                #0  0x000000000162975d gen_dealloc (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x122a75d)
+                #1  0x0000000001826d79 _PyEval_EvalFrameDefault.warm (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x1427d79)
+                #2  0x0000000001687550 gen_send_ex2 (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x1288550)
+                #3  0x00000000004a1a92 task_step_impl (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0xa2a92)
+                #4  0x00000000004a1871 task_step (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0xa2871)
+                #5  0x00000000004a2a3a task_wakeup (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0xa3a3a)
+                #6  0x0000000001606da8 cfunction_vectorcall_O.llvm.1926836591098135445 (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x1207da8)
+                #7  0x00007fc0ecb72f69 __Pyx_PyObject_Call (loop.cpython-312-x86_64-linux-gnu.so + 0x137f69)
+                #8  0x00007fc0ecb7896b __pyx_f_6uvloop_4loop_4Loop__on_idle (loop.cpython-312-x86_64-linux-gnu.so + 0x13d96b)
+                #9  0x00007fc0ecb72e52 __pyx_f_6uvloop_4loop_6Handle__run (loop.cpython-312-x86_64-linux-gnu.so + 0x137e52)
+                #10 0x00007fc0ecb74c88 __pyx_f_6uvloop_4loop_cb_idle_callback (loop.cpython-312-x86_64-linux-gnu.so + 0x139c88)
+                #11 0x00007fc0ecb90311 uv__run_idle (loop.cpython-312-x86_64-linux-gnu.so + 0x155311)
+                #12 0x00007fc0ecb8d647 uv_run (loop.cpython-312-x86_64-linux-gnu.so + 0x152647)
+                #13 0x00007fc0ecaaedb5 __pyx_f_6uvloop_4loop_4Loop__Loop__run (loop.cpython-312-x86_64-linux-gnu.so + 0x73db5)
+                #14 0x00007fc0ecb16e50 __pyx_f_6uvloop_4loop_4Loop__run (loop.cpython-312-x86_64-linux-gnu.so + 0xdbe50)
+                #15 0x00007fc0ecb27cf0 __pyx_pf_6uvloop_4loop_4Loop_24run_forever (loop.cpython-312-x86_64-linux-gnu.so + 0xeccf0)
+                #16 0x0000000001675083 _PyObject_VectorcallTstate.llvm.9025008140250842792 (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x1276083)
+                #17 0x000000000176d1b8 PyObject_VectorcallMethod (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x136e1b8)
+                #18 0x00007fc0ecb2bd60 __pyx_pf_6uvloop_4loop_4Loop_44run_until_complete (loop.cpython-312-x86_64-linux-gnu.so + 0xf0d60)
+                #19 0x00007fc0ecb2d591 __pyx_pw_6uvloop_4loop_4Loop_45run_until_complete (loop.cpython-312-x86_64-linux-gnu.so + 0xf2591)
+                #20 0x0000000001615760 _PyEval_EvalFrameDefault (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x1216760)
+                #21 0x000000000169661e PyEval_EvalCode (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x129761e)
+                #22 0x00000000016ae009 run_mod.llvm.11551487264727781097 (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x12af009)
+                #23 0x00000000017da063 pyrun_file (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x13db063)
+                #24 0x00000000017d9d06 _PyRun_SimpleFileObject (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x13dad06)
+                #25 0x00000000017d9be6 _PyRun_AnyFileObject (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x13dabe6)
+                #26 0x00000000017d9ab8 pymain_run_file_obj (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x13daab8)
+                #27 0x00000000017d99af pymain_run_file (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x13da9af)
+                #28 0x0000000001726c92 Py_RunMain (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x1327c92)
+                #29 0x0000000001726898 pymain_main.llvm.15864149582985604982 (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x1327898)
+                #30 0x00000000017266ac main (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x13276ac)
+                #31 0x00007fc15617a5b5 __libc_start_call_main (libc.so.6 + 0x35b5)
+                #32 0x00007fc15617a668 __libc_start_main@@GLIBC_2.34 (libc.so.6 + 0x3668)
+                #33 0x00000000017b14ab _start (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x13b24ab)
+                
+                Stack trace of thread 3148807:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148796:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148808:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148814:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148811:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148801:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148798:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148809:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148793:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148812:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148800:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148813:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148802:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148797:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148799:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148815:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148804:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148792:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148805:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148791:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148810:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148790:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148789:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3189096:
+                #0  0x00007fc0df81de8e gomp_barrier_wait_end (libgomp.so.1 + 0x1de8e)
+                #1  0x00007fc0df81b498 gomp_thread_start (libgomp.so.1 + 0x1b498)
+                #2  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #3  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3149035:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc14441cd37 _ZNSt18condition_variable4waitERSt11unique_lockISt5mutexE (libstdc++.so.6 + 0x1cd37)
+                #5  0x00007fbfaa9d8995 n/a (onnxruntime_pybind11_state.cpython-312-x86_64-linux-gnu.so + 0xdd8995)
+                #6  0x00007fbfaa9d90f4 n/a (onnxruntime_pybind11_state.cpython-312-x86_64-linux-gnu.so + 0xdd90f4)
+                #7  0x00007fbfaaa03f2a n/a (onnxruntime_pybind11_state.cpython-312-x86_64-linux-gnu.so + 0xe03f2a)
+                #8  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #9  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148803:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148794:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148901:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3189187:
+                #0  0x00007fc0df81de8e gomp_barrier_wait_end (libgomp.so.1 + 0x1de8e)
+                #1  0x00007fc0df81b498 gomp_thread_start (libgomp.so.1 + 0x1b498)
+                #2  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #3  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148895:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148907:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148795:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148893:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148905:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148906:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148806:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148890:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148892:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148894:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148827:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561f18a8 __new_sem_wait_slow64.constprop.0 (libc.so.6 + 0x7a8a8)
+                #4  0x00000000018f87ae PyThread_acquire_lock_timed.cold (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x14f97ae)
+                #5  0x00000000004d4344 _queue_SimpleQueue_get_impl (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0xd5344)
+                #6  0x00000000004d408a _queue_SimpleQueue_get (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0xd508a)
+                #7  0x000000000167543d method_vectorcall_FASTCALL_KEYWORDS_METHOD.llvm.259711108090775609 (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x127643d)
+                #8  0x0000000001615760 _PyEval_EvalFrameDefault (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x1216760)
+                #9  0x0000000001611fcd method_vectorcall.llvm.13512839983725988028 (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x1212fcd)
+                #10 0x000000000173106a thread_run (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x133206a)
+                #11 0x0000000001730fa4 pythread_wrapper.llvm.1448875826617997552 (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x1331fa4)
+                #12 0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #13 0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148828:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561f18a8 __new_sem_wait_slow64.constprop.0 (libc.so.6 + 0x7a8a8)
+                #4  0x00000000018f87ae PyThread_acquire_lock_timed.cold (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x14f97ae)
+                #5  0x00000000004d4344 _queue_SimpleQueue_get_impl (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0xd5344)
+                #6  0x00000000004d408a _queue_SimpleQueue_get (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0xd508a)
+                #7  0x000000000167543d method_vectorcall_FASTCALL_KEYWORDS_METHOD.llvm.259711108090775609 (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x127643d)
+                #8  0x0000000001615760 _PyEval_EvalFrameDefault (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x1216760)
+                #9  0x0000000001611fcd method_vectorcall.llvm.13512839983725988028 (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x1212fcd)
+                #10 0x000000000173106a thread_run (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x133206a)
+                #11 0x0000000001730fa4 pythread_wrapper.llvm.1448875826617997552 (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x1331fa4)
+                #12 0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #13 0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148903:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148818:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148900:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3189180:
+                #0  0x00007fc0df81de8e gomp_barrier_wait_end (libgomp.so.1 + 0x1de8e)
+                #1  0x00007fc0df81b498 gomp_thread_start (libgomp.so.1 + 0x1b498)
+                #2  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #3  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148886:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148887:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148909:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148883:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148908:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148829:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561f18a8 __new_sem_wait_slow64.constprop.0 (libc.so.6 + 0x7a8a8)
+                #4  0x00000000018f87ae PyThread_acquire_lock_timed.cold (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x14f97ae)
+                #5  0x00000000004d4344 _queue_SimpleQueue_get_impl (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0xd5344)
+                #6  0x00000000004d408a _queue_SimpleQueue_get (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0xd508a)
+                #7  0x000000000167543d method_vectorcall_FASTCALL_KEYWORDS_METHOD.llvm.259711108090775609 (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x127643d)
+                #8  0x0000000001615760 _PyEval_EvalFrameDefault (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x1216760)
+                #9  0x0000000001611fcd method_vectorcall.llvm.13512839983725988028 (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x1212fcd)
+                #10 0x000000000173106a thread_run (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x133206a)
+                #11 0x0000000001730fa4 pythread_wrapper.llvm.1448875826617997552 (/home/poop/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12 + 0x1331fa4)
+                #12 0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #13 0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3149038:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc14441cd37 _ZNSt18condition_variable4waitERSt11unique_lockISt5mutexE (libstdc++.so.6 + 0x1cd37)
+                #5  0x00007fbfaa9d8995 n/a (onnxruntime_pybind11_state.cpython-312-x86_64-linux-gnu.so + 0xdd8995)
+                #6  0x00007fbfaa9d90f4 n/a (onnxruntime_pybind11_state.cpython-312-x86_64-linux-gnu.so + 0xdd90f4)
+                #7  0x00007fbfaaa03f2a n/a (onnxruntime_pybind11_state.cpython-312-x86_64-linux-gnu.so + 0xe03f2a)
+                #8  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #9  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3149037:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc14441cd37 _ZNSt18condition_variable4waitERSt11unique_lockISt5mutexE (libstdc++.so.6 + 0x1cd37)
+                #5  0x00007fbfaa9d8995 n/a (onnxruntime_pybind11_state.cpython-312-x86_64-linux-gnu.so + 0xdd8995)
+                #6  0x00007fbfaa9d90f4 n/a (onnxruntime_pybind11_state.cpython-312-x86_64-linux-gnu.so + 0xdd90f4)
+                #7  0x00007fbfaaa03f2a n/a (onnxruntime_pybind11_state.cpython-312-x86_64-linux-gnu.so + 0xe03f2a)
+                #8  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #9  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148816:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3189170:
+                #0  0x00007fc0df81de8e gomp_barrier_wait_end (libgomp.so.1 + 0x1de8e)
+                #1  0x00007fc0df81b498 gomp_thread_start (libgomp.so.1 + 0x1b498)
+                #2  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #3  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148897:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148899:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3189179:
+                #0  0x00007fc0df81de8e gomp_barrier_wait_end (libgomp.so.1 + 0x1de8e)
+                #1  0x00007fc0df81b498 gomp_thread_start (libgomp.so.1 + 0x1b498)
+                #2  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #3  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3149025:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc0ecb96a49 uv_cond_wait (loop.cpython-312-x86_64-linux-gnu.so + 0x15ba49)
+                #5  0x00007fc0ecb88e26 worker (loop.cpython-312-x86_64-linux-gnu.so + 0x14de26)
+                #6  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #7  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148884:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc016c393eb blas_thread_server (libscipy_openblas-6cdc3b4a.so + 0x4393eb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3148817:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc142430dfb blas_thread_server (libscipy_openblas64_-56d6093b.so + 0x430dfb)
+                #5  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #6  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3189959:
+                #0  0x00007fc0df81de8e gomp_barrier_wait_end (libgomp.so.1 + 0x1de8e)
+                #1  0x00007fc0df81b498 gomp_thread_start (libgomp.so.1 + 0x1b498)
+                #2  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #3  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                
+                Stack trace of thread 3149024:
+                #0  0x00007fc1561f19a2 __syscall_cancel_arch (libc.so.6 + 0x7a9a2)
+                #1  0x00007fc1561e5c3c __internal_syscall_cancel (libc.so.6 + 0x6ec3c)
+                #2  0x00007fc1561e62ac __futex_abstimed_wait_common (libc.so.6 + 0x6f2ac)
+                #3  0x00007fc1561e897e pthread_cond_wait@@GLIBC_2.3.2 (libc.so.6 + 0x7197e)
+                #4  0x00007fc0ecb96a49 uv_cond_wait (loop.cpython-312-x86_64-linux-gnu.so + 0x15ba49)
+                #5  0x00007fc0ecb88e26 worker (loop.cpython-312-x86_64-linux-gnu.so + 0x14de26)
+                #6  0x00007fc1561e9464 start_thread (libc.so.6 + 0x72464)
+                #7  0x00007fc15626c5ec __clone3 (libc.so.6 + 0xf55ec)
+                ELF object binary architecture: AMD x86-64

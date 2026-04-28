@@ -54,8 +54,16 @@ npm run smoke:pi-ext
 
 config: `pi-agent.json` (override with `GHOSTY_AGENT_CONFIG_PATH`)
 
+memory defaults use split banks:
+- procedural: `pi-ghosty-procedural`
+- personal: `pi-ghosty-personal`
+- coordinator recalls personal first, then procedural
+- working peers recall procedural only
+
 ## docs
 
 - `AGENTS.md` minimal agent contract
+- `docs/README.md` docs index
 - `docs/decisions/` architecture decision records
+- `docs/observations/` evidence checklists for live runs
 - historical migration docs live under `docs/archive/`

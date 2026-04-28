@@ -11,8 +11,7 @@ const sessionDir = resolve(runDir, "data", "sessions", "coordinator");
 const envConfigPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim();
 const fallbackConfigPath = resolve(process.cwd(), "pi-agent.json");
 const configPath = envConfigPath && existsSync(resolve(process.cwd(), envConfigPath)) ? envConfigPath : fallbackConfigPath;
-const configBase = configPath.split(/[\\/]/).pop() || configPath;
-const defaultModel = configBase === "pi-agent-local.json" ? "vllm/omnicoder-9b" : "openai-codex/gpt-5.3-codex";
+const defaultModel = "openai-codex/gpt-5.4-mini";
 const model = process.env.GHOSTY_PI_SMOKE_MODEL || defaultModel;
 
 const reportDir = resolve(runDir, "data", "delegation-reports");
@@ -34,6 +33,7 @@ function hasAuthForProvider(providerId) {
   // env var auth (subset; only what we might smoke with)
   const envMap = {
     openai: "OPENAI_API_KEY",
+    "openai-codex": "OPENAI_API_KEY",
     anthropic: "ANTHROPIC_API_KEY",
     google: "GEMINI_API_KEY",
     mistral: "MISTRAL_API_KEY",

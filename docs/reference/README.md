@@ -7,3 +7,5 @@ Start here:
 - `hindsight_recommendation_report.md` — recommended configurations + serving scenarios
 
 Older/duplicative migration notes live in `docs/archive/reference/`.
+
+Run-specific evidence checklists live in `../observations/`.
