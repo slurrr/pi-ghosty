@@ -8,7 +8,7 @@ this repo is contributor-facing: it contains the extension entrypoint, orchestra
 
 the extension entrypoint is `.pi/extensions/ghosty/index.ts`
 
-the shared code it uses lives under `src/` (`delegation/`, `memory/`, `workflow/`, `extensions/`, `config/`)
+the shared code it uses lives under `lib/` (`delegation/`, `memory/`, `workflow/`, `extensions/`, `config/`)
 
 all durable state/artifacts go under `runDir` (default `~/runs/pi-ghosty`, override `GHOSTY_PI_RUN_DIR`)
 

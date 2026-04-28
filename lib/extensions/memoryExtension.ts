@@ -4,7 +4,6 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { performance } from "node:perf_hooks";
 import { dirname, resolve } from "node:path";
 import type { GhostyConfig } from "../config/schema.js";
-import type { Env } from "../env.js";
 import {
   createHindsightClient,
   getOperationStatusDirect,
@@ -198,8 +197,15 @@ function updateMemoryIndex(runDir: string, agentNames: string[]): void {
   }
 }
 
+type MemoryEnv = {
+  HINDSIGHT_BASE_URL?: string;
+  PROJECT_TAG?: string;
+  HINDSIGHT_PROCEDURAL_BANK_ID?: string;
+  HINDSIGHT_PERSONAL_BANK_ID?: string;
+};
+
 export function memoryExtensionFactory(
-  env: Env,
+  env: MemoryEnv,
   config: GhostyConfig,
   agentName: string,
   sessionId: string,

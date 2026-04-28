@@ -1,14 +1,32 @@
 #!/usr/bin/env node
 
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectDir = process.env.GHOSTY_PROJECT_DIR?.trim()
   ? resolve(process.cwd(), process.env.GHOSTY_PROJECT_DIR.trim())
   : resolve(scriptDir, "..");
+
+// --- BB-BROWSER PRE-FLIGHT ---
+async function ensureBbBrowser() {
+  // We now let bb-browser manage its own lifecycle.
+  // Since we symlinked ~/.bb-browser/browser/user-data to ~/.chrome-bb,
+  // it will use our preferred profile automatically.
+  try {
+    console.log("🚀 Ensuring bb-browser is ready...");
+    // Running a lightweight command will trigger the auto-launch if needed.
+    spawnSync("bb-browser", ["status"], { stdio: "ignore" });
+  } catch (err) {
+    console.error("⚠️ Failed to ensure bb-browser.");
+  }
+}
+
+// Ensure BB is up before launching pi
+await ensureBbBrowser();
 
 const callerCwd = process.cwd();
 const rawMode = process.env.GHOSTY_WORKDIR_MODE?.trim().toLowerCase();

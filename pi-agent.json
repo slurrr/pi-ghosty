@@ -73,29 +73,29 @@
   },
   "agents": {
     "coordinator": {
-      "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch", "write", "edit"],
+      "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch", "write", "edit", "bash"],
       "thinkingLevel": "medium",
-      "defaultModel": "openai-codex/gpt-5.4-mini"
+      "defaultModel": "my-google-ai-studio/gemini-2.0-flash-exp"
     },
     "coder": {
       "tools": ["read", "grep", "find", "ls", "edit", "write", "bash"],
-      "thinkingLevel": "high",
-      "defaultModel": "openai-codex/gpt-5.4-mini"
+      "thinkingLevel": "medium",
+      "defaultModel": "openai-codex/gpt-5.3-codex"
     },
     "researcher": {
       "tools": ["read", "grep", "find", "ls", "write", "edit", "web_search"],
       "thinkingLevel": "medium",
-      "defaultModel": "openai-codex/gpt-5.4-mini"
+      "defaultModel": "my-google-ai-studio/gemini-2.0-flash-exp"
     },
     "reviewer": {
       "tools": ["read", "grep", "find", "ls", "write", "edit"],
       "thinkingLevel": "medium",
-      "defaultModel": "openai-codex/gpt-5.4-mini"
+      "defaultModel": "my-google-ai-studio/gemini-2.0-flash-exp"
     },
     "memory": {
       "tools": ["read", "grep", "find", "ls"],
       "thinkingLevel": "medium",
-      "defaultModel": "vllm/omnicoder-9b"
+      "defaultModel": "my-google-ai-studio/gemini-2.0-flash-exp"
     }
   },
   "requestRules": [

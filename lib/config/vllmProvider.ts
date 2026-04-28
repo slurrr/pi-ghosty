@@ -1,11 +1,9 @@
 import { createHash } from "node:crypto";
+import type { GhostyConfig } from "./schema.js";
 
 export interface VllmModelInfo {
-  /** Chosen default model id */
   id: string;
-  /** Optional server-provided label (may equal id) */
   name?: string;
-  /** All model ids returned by /v1/models (best-effort) */
   allIds: string[];
 }
 
@@ -17,14 +15,8 @@ function sha1(text: string): string {
   return createHash("sha1").update(text).digest("hex");
 }
 
-// Cache: baseUrl -> discovery promise (dedupe concurrent calls)
 const discoveryCache = new Map<string, Promise<VllmModelInfo>>();
 
-/**
- * Discover available vLLM models via the OpenAI-compatible GET /models endpoint.
- *
- * baseUrl is expected to already include /v1 (pi-ghosty default is http://localhost:8002/v1).
- */
 export async function discoverVllmDefaultModel(baseUrl: string): Promise<VllmModelInfo> {
   const key = sha1(baseUrl);
   const cached = discoveryCache.get(key);
@@ -35,7 +27,6 @@ export async function discoverVllmDefaultModel(baseUrl: string): Promise<VllmMod
     const res = await fetch(url, {
       method: "GET",
       headers: {
-        // vLLM ignores auth by default, but some proxies require a header.
         Authorization: "Bearer dummy",
       },
     });
@@ -53,19 +44,40 @@ export async function discoverVllmDefaultModel(baseUrl: string): Promise<VllmMod
       throw new Error(`vLLM model discovery returned no models from ${url}`);
     }
 
-    // Choose a stable default.
-    // If multiple are present (e.g., LoRAs), prefer server ordering (data[0]).
-    // Rationale: no config required; vLLM/proxies typically place the primary/default model first.
     const allIds = [...new Set(ids)];
     const chosen = allIds[0];
-
-    return {
-      id: chosen,
-      name: chosen,
-      allIds,
-    } satisfies VllmModelInfo;
+    return { id: chosen, name: chosen, allIds } satisfies VllmModelInfo;
   })();
 
   discoveryCache.set(key, p);
   return p;
+}
+
+export async function registerVllmProvider(modelRegistry: any, config: GhostyConfig, baseUrlOverride?: string): Promise<VllmModelInfo | null> {
+  if (!modelRegistry || typeof modelRegistry.registerProvider !== "function") return null;
+
+  const baseUrl = baseUrlOverride || process.env.VLLM_BASE_URL || config.defaults.runtime?.vllmBaseUrl;
+  if (!baseUrl) return null;
+
+  const vllmModel = await discoverVllmDefaultModel(baseUrl);
+
+  modelRegistry.registerProvider("vllm", {
+    api: "openai-completions",
+    baseUrl,
+    apiKey: "dummy",
+    authHeader: false,
+    models: [
+      {
+        id: vllmModel.id,
+        name: `${vllmModel.id} (vLLM)`,
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: config.defaults.runtime!.model.contextWindow,
+        maxTokens: config.defaults.runtime!.model.maxTokens,
+      },
+    ],
+  } as any);
+
+  return vllmModel;
 }

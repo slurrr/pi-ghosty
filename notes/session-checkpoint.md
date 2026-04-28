@@ -1,45 +1,30 @@
 # Current Goal
-- Keep pi-ghosty stable enough to use day to day while the memory stack is under test.
-- Use hindsight split-bank memory cleanly: procedural for peers, personal + procedural for coordinator.
+- Finalize `pi-ghosty` as a daily-driver agent harness with reliable multi-peer routing and deep web grounding.
+- Revisit and refine `pi-agent.json` default model selections.
+- Harden the `WorkflowMonitor` logic in `lib/workflow/`.
 
 # Current State
-- Split-bank memory is wired and verified in live receipts/traces:
-  - procedural bank: `pi-ghosty-procedural`
-  - personal bank: `pi-ghosty-personal`
-  - coordinator injects personal first, then procedural
-  - peers inject procedural only
-- Missions were set via the node scripts and are visible in backend/live memory artifacts.
-- `tagsMatch: "all"` remains the recall filter; tag templates are still hardcoded in `src/extensions/memoryExtension.ts`.
-- Added a backend status command that queries hindsight directly:
-  - `scripts/memory-status.mjs`
-  - `npm run memory` / `npm run memory:status`
-- Kept the local receipts viewer as:
-  - `npm run memory:receipts`
-- The old `npm run memory` receipts behavior was replaced because it was noisy / not the best backend check.
-- Hindsight previously core dumped under heavy load.
-- The crash was a real `SIGSEGV` in native/runtime land, not a clean shutdown.
-- Useful coredump facts recorded from `coredumpctl info 3148743`:
-  - process: `hindsight-api`
-  - signal: `11 (SEGV)`
-  - crash point: `gen_dealloc` / `uvloop` idle callback path
-  - lots of worker threads parked in `torch/libgomp.so` and `onnxruntime`
-  - coredump file exists at `/var/lib/systemd/coredump/core.hindsight-api.1000.033aaa856966415689a83fd610b1c8bb.3148743.1777080086000000.zst`
-- The long retain job that likely pushed it over the edge was huge (~99k tokens), with slow retain extraction and consolidation.
-- Hindsight is back up after restart and the memory status script works again.
+- **`bb-browser` Grounding**: Verified and stable via CDP port `19825`. Successfully bypassing anti-bot measures using the authenticated profile link.
+- **Architecture Refactor**: **COMPLETED**. 
+  - `src/` renamed to `lib/`. 
+  - Legacy runtime remnants (`lib/pi/`, `lib/env.ts`, `lib/memory/hindsight.ts`) deleted.
+  - vLLM discovery logic successfully migrated to `lib/config/vllmProvider.ts`.
+  - Extension entry point (`.pi/extensions/ghosty/index.ts`) slimmed down; utilities moved to `lib/utils/helpers.ts`.
+- **Visibility (War Room)**: **COMPLETED**. 
+  - `/ghosty peer open` now defaults to a "War Room" layout: coordinator on left, peer interactive session top-right, and live JSONL log tail bottom-right.
+  - `GHOSTY_SAMPLING_TRACE=1` wired in to stream raw LLM tokens to the log pane.
+- **Model Routing**: Agent-specific `defaultModel` and `thinkingLevel` enforced from `pi-agent.json` for all peers on startup.
 
 # Decisions
-- Treat the crash as an environment / native-stack stability issue, not a repo logic bug.
-- Do not keep digging for a surgical fix unless the same crash repeats after the env upgrade.
-- Use backend status queries for live config verification; use receipts/traces for behavior verification.
-- Keep the checkpoint short and factual so the crash doesn’t get rediscovered from scratch.
+- **Extension-Only Model**: All future development happens in `.pi/extensions/ghosty/` (brain) and `lib/` (modular body).
+- **War Room Default**: Visibility into peer "frozen" states is prioritized via live log tailing in a vertical tmux split.
+- **Grounding Protocol**: Favor `bb-browser open` -> `snapshot`/`eval` for robustness over brittle site adapters.
 
 # Open Problems
-- Decide whether to upgrade/re-pin the inference/memory stack now that a newer vLLM/transformers combo is available.
-- Decide whether to add watchdog / auto-restart behavior for hindsight if long retain jobs can still wedge it.
-- If the crash repeats, collect coredump metadata first before doing more manual forensics.
+- `pi-agent.json` model defaults: Need to verify if the current mix of `gemini-3-flash-preview` and `gpt-5.3-codex` is optimal for the current workloads.
+- Workflow Monitor: Current screening is deterministic; needs verification for proactive interrupt power in long-running loops.
 
 # Resume Instructions
-1. For live backend config, run `npm run memory:status`.
-2. For recent run evidence, run `npm run memory:receipts`.
-3. If hindsight dies again, inspect `coredumpctl info <pid>` first, then only do `gdb` if the metadata is still ambiguous.
-4. If the env upgrade happens, re-verify split-bank behavior and memory quality after the restart.
+1. Review `pi-agent.json` default models.
+2. Verify local vLLM registration via new `vllmProvider.ts` wiring.
+3. Proceed to hardening `WorkflowMonitor` in `lib/workflow/`.

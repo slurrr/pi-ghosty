@@ -15,8 +15,9 @@ import { completeSimple } from "@mariozechner/pi-ai";
 import type { Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { Text } from "@mariozechner/pi-tui";
-import { loadConfigFromFile } from "../../../src/config/loadConfig.js";
-import { loadPeerPromptParts } from "../../../src/prompts/loadPeerPromptParts.js";
+import { loadConfigFromFile } from "../../../lib/config/loadConfig.js";
+import { registerVllmProvider } from "../../../lib/config/vllmProvider.js";
+import { loadPeerPromptParts } from "../../../lib/prompts/loadPeerPromptParts.js";
 import {
   buildPeerDelegationPrompt,
   delegateBatchRequestSchema,
@@ -26,19 +27,20 @@ import {
   routingDecisionSchema,
   type DelegationLaunch,
   type DelegationReport,
-} from "../../../src/delegation/contracts.js";
-import { delegationReportPath, delegationReportTitle, writeDelegationReport } from "../../../src/delegation/delegationReports.js";
-import { createPeerReportTool } from "../../../src/delegation/peerReportTool.js";
-import { KeyedMutex, Semaphore } from "../../../src/delegation/concurrency.js";
-import { SessionCatalogStore, type CatalogEntry } from "../../../src/delegation/sessionCatalogStore.js";
-import { formatSessionName } from "../../../src/delegation/sessionNaming.js";
-import { modelKey, resolveRoutingDefaults } from "../../../src/config/rules.js";
-import { resolveProjectPresetEnabledModels, setProjectEnabledModels } from "../../../src/config/projectSettings.js";
-import { memoryExtensionFactory } from "../../../src/extensions/memoryExtension.js";
-import { roleSystemPromptExtensionFactory } from "../../../src/extensions/roleSystemPromptExtension.js";
-import { samplingExtensionFactory } from "../../../src/extensions/samplingExtension.js";
-import { JsonlTrace } from "../../../src/logging/jsonlTrace.js";
-import { WorkflowMonitor, getWorkflowMonitor } from "../../../src/workflow/workflowMonitor.js";
+} from "../../../lib/delegation/contracts.js";
+import { delegationReportPath, delegationReportTitle, writeDelegationReport } from "../../../lib/delegation/delegationReports.js";
+import { createPeerReportTool } from "../../../lib/delegation/peerReportTool.js";
+import { KeyedMutex, Semaphore } from "../../../lib/delegation/concurrency.js";
+import { SessionCatalogStore, type CatalogEntry } from "../../../lib/delegation/sessionCatalogStore.js";
+import { formatSessionName } from "../../../lib/delegation/sessionNaming.js";
+import { modelKey, resolveRoutingDefaults } from "../../../lib/config/rules.js";
+import { resolveProjectPresetEnabledModels, setProjectEnabledModels } from "../../../lib/config/projectSettings.js";
+import { memoryExtensionFactory } from "../../../lib/extensions/memoryExtension.js";
+import { roleSystemPromptExtensionFactory } from "../../../lib/extensions/roleSystemPromptExtension.js";
+import { samplingExtensionFactory } from "../../../lib/extensions/samplingExtension.js";
+import { JsonlTrace } from "../../../lib/logging/jsonlTrace.js";
+import { WorkflowMonitor, getWorkflowMonitor } from "../../../lib/workflow/workflowMonitor.js";
+import { lastAssistantText, safeJsonParse, shellQuote } from "../../../lib/utils/helpers.js";
 
 const GHOSTY_PROMPT_MARKER = "GHOSTY_PROMPT_MARKER_v1";
 
@@ -66,34 +68,12 @@ function isGhostyExtensionExplicitlyRequested(metaUrl: string): boolean {
 }
 
 
-function lastAssistantText(messages: any[]): string {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const message = messages[i];
-    if (message?.role !== "assistant") continue;
-    const content = message?.content;
-    if (typeof content === "string" && content.trim()) return content;
-    if (Array.isArray(content)) {
-      const text = content
-        .filter((block: any) => block?.type === "text" && typeof block?.text === "string")
-        .map((block: any) => block.text)
-        .join("");
-      if (text.trim()) return text;
-    }
-  }
-  return "(no assistant text)";
-}
-
 function hasPersistedPeerSessions(peerSessionDir: string): boolean {
   try {
     return readdirSync(peerSessionDir).some((name) => name.endsWith(".jsonl"));
   } catch {
     return false;
   }
-}
-
-function shellQuote(value: string): string {
-  // Minimal POSIX shell quoting suitable for passing a single command string to tmux.
-  return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
 function resolveGhostyConfigPath(projectDir: string): string {
@@ -107,25 +87,6 @@ function resolveGhostyConfigPath(projectDir: string): string {
   }
 
   return candidates[0] ?? resolve(projectDir, "pi-agent.json");
-}
-
-function extractJsonObject(text: string): string | undefined {
-  const trimmed = text.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  const candidate = (fenced?.[1] ?? trimmed).trim();
-  const first = candidate.indexOf("{");
-  const last = candidate.lastIndexOf("}");
-  if (first === -1 || last === -1 || last <= first) return undefined;
-  return candidate.slice(first, last + 1);
-}
-
-function safeJsonParse<T>(text: string): T | undefined {
-  const extracted = extractJsonObject(text) ?? text;
-  try {
-    return JSON.parse(extracted) as T;
-  } catch {
-    return undefined;
-  }
 }
 
 function extractGuidelines(systemPrompt: string): string | null {
@@ -196,7 +157,7 @@ export default function (pi: any) {
     runDir,
     sessionId: "coordinator",
     projectTag: config.defaults.projectTag,
-    traceSampling: false,
+    traceSampling: samplingTraceEnabled,
   })(pi);
 
   const maxParallelDelegations = config.routing.defaults.maxParallelDelegations;
@@ -511,6 +472,11 @@ export default function (pi: any) {
     return ["1", "true", "yes", "y", "on"].includes(raw);
   })();
 
+  const samplingTraceEnabled = (() => {
+    const raw = String(process.env.GHOSTY_SAMPLING_TRACE ?? "").trim().toLowerCase();
+    return ["1", "true", "yes", "y", "on"].includes(raw);
+  })();
+
   let activeRole = "coordinator";
   const wiredMemorySessions = new Set<string>();
 
@@ -523,6 +489,12 @@ export default function (pi: any) {
   // Ensure coordinator does NOT get write/edit/bash unless explicitly allowed.
   // Also ensures peer sessions opened via /peer open get their configured surfaces.
   pi.on?.("session_start", async (event: any, ctx: any) => {
+    try {
+      await registerVllmProvider(ctx?.modelRegistry, config, process.env.VLLM_BASE_URL || config.defaults.runtime?.vllmBaseUrl);
+    } catch {
+      // best-effort registration; non-local providers can still run
+    }
+
     const role = inferRoleFromSessionFile(ctx?.sessionManager?.getSessionFile?.());
     activeRole = role;
     applyToolSurface(role);
@@ -533,38 +505,40 @@ export default function (pi: any) {
     const startReason = String(event?.reason ?? "");
     const isFreshSessionStart = startReason === "startup" || startReason === "new" || startReason === "fork";
 
-    // Apply fresh-start defaults only for new coordinator sessions.
+    // Apply fresh-start defaults for all roles.
     // Resumed sessions must keep the previously selected model.
-    if (sessionId && role === "coordinator" && isFreshSessionStart) {
+    if (sessionId && isFreshSessionStart) {
       const persistenceEnabled = config.defaults?.persistence?.enabled ?? false;
       if (!persistenceEnabled) {
-        // Apply hybrid-default preset
-        const presets = getModelScopePresets();
-        const hybridDefaultFallback = presets["hybrid-default"] ?? ["openai-codex/*", "vllm/\*"];
-        const hybridDefaultPatterns = resolveProjectPresetEnabledModels(projectDir, "hybrid-default", hybridDefaultFallback);
-        try {
-          setProjectEnabledModels(projectDir, hybridDefaultPatterns);
-        } catch (err: any) {
-          ctx.ui?.notify?.(`ghosty: failed to write project enabledModels: ${err?.message ?? String(err)}`, "warning");
+        if (role === "coordinator") {
+          // Apply hybrid-default preset
+          const presets = getModelScopePresets();
+          const hybridDefaultFallback = presets["hybrid-default"] ?? ["openai-codex/*", "vllm/*"];
+          const hybridDefaultPatterns = resolveProjectPresetEnabledModels(projectDir, "hybrid-default", hybridDefaultFallback);
+          try {
+            setProjectEnabledModels(projectDir, hybridDefaultPatterns);
+          } catch (err: any) {
+            ctx.ui?.notify?.(`ghosty: failed to write project enabledModels: ${err?.message ?? String(err)}`, "warning");
+          }
         }
 
-        // Set coordinator default model from config and apply it to the current session.
-        const coordinatorDefaultModel = config.agents?.coordinator?.defaultModel;
-        if (coordinatorDefaultModel) {
-          const resolved = await resolveModelSpec(coordinatorDefaultModel, ctx);
+        // Set agent default model from config and apply it to the current session.
+        const agentDefaultModel = config.agents?.[role]?.defaultModel;
+        if (agentDefaultModel) {
+          const resolved = await resolveModelSpec(agentDefaultModel, ctx);
           if (resolved) {
             const model = ctx.modelRegistry?.find?.(resolved.provider, resolved.id);
             if (model) {
               const success = await pi.setModel(model);
               if (!success) {
-                ctx.ui?.notify?.(`ghosty: could not set coordinator model ${coordinatorDefaultModel}`, "warning");
+                ctx.ui?.notify?.(`ghosty: could not set ${role} model ${agentDefaultModel}`, "warning");
               }
             }
           }
         }
 
-        const coordinatorThinkingLevel = config.agents?.coordinator?.thinkingLevel ?? "off";
-        pi.setThinkingLevel(coordinatorThinkingLevel as any);
+        const agentThinkingLevel = config.agents?.[role]?.thinkingLevel ?? (role === "coordinator" ? "medium" : "off");
+        pi.setThinkingLevel(agentThinkingLevel as any);
       }
     }
     if (sessionId && role === "coordinator") {
@@ -1118,7 +1092,10 @@ export default function (pi: any) {
 
     const preferredModel = config.agents?.[peerName]?.defaultModel?.trim();
     if (preferredModel) {
-      const preferredResolved = resolveModelSpecSyncLike(preferredModel, ctx, idle as any);
+      const { allowed, available } = await getAllowedModels(ctx);
+      const pool = allowed.length > 0 ? allowed : available;
+      const preferredResolved = resolveModelSpecSyncLike(preferredModel, ctx, pool);
+      
       const preferredMatch = preferredResolved
         ? idle.find((c) => c.model && modelKey(c.model) === modelKey(preferredResolved) && c.sessionFile)
         : undefined;
@@ -1272,7 +1249,7 @@ export default function (pi: any) {
                 runDir,
                 sessionId: peerSessionId,
                 projectTag: config.defaults.projectTag,
-                traceSampling: false,
+                traceSampling: samplingTraceEnabled,
               }),
               ...(memoryDisabled ? [] : [memoryExtensionFactory(memoryEnv, config, parsed.peerName, peerSessionId, { runDir })]),
               roleSystemPromptExtensionFactory(parsed.peerName),
@@ -1749,20 +1726,40 @@ export default function (pi: any) {
           `GHOSTY_AGENT_CONFIG_PATH=${shellQuote(resolvedConfigPath)} ` +
           `pi --session ${shellQuote(sessionPath)} --session-dir ${shellQuote(peerSessionDir)} -e ${shellQuote(extPath)}`;
 
-        const res = spawnSync("tmux", ["new-window", "-n", peerName, cmd], {
+        const logDir = resolve(runDir, "data", "traces", peerName);
+        mkdirSync(logDir, { recursive: true });
+        const logPath = resolve(logDir, `${mostRecent.id}.jsonl`);
+        if (!existsSync(logPath)) writeFileSync(logPath, "");
+
+        const logCmd = `tail -n 50 -f ${shellQuote(logPath)} | sed 's/\\\\n/\\n/g'`;
+
+        // Attempt "War Room" layout: Split vertically for peer, then split the new pane horizontally for logs.
+        const res = spawnSync("tmux", ["split-window", "-h", "-p", "50", cmd], {
           encoding: "utf8",
         });
 
-        if (res.status !== 0) {
-          const msg = `tmux new-window failed (exit ${res.status}): ${(res.stderr || res.stdout || "").trim()}`;
-          if (ctx.hasUI) ctx.ui.notify(msg, "error");
-          else process.stdout.write(`${msg}\n`);
-          return;
+        if (res.status === 0) {
+          spawnSync("tmux", ["split-window", "-v", "-p", "30", logCmd], {
+            encoding: "utf8",
+          });
+          const ok = `Opened War Room for ${peerName} (session: ${mostRecent.id})`;
+          if (ctx.hasUI) ctx.ui.notify(ok, "info");
+          else process.stdout.write(`${ok}\n`);
+        } else {
+          // Fallback to new-window if split fails (e.g. pane too small)
+          const fallback = spawnSync("tmux", ["new-window", "-n", peerName, cmd], {
+            encoding: "utf8",
+          });
+          if (fallback.status !== 0) {
+            const msg = `tmux failed (exit ${fallback.status}): ${(fallback.stderr || fallback.stdout || "").trim()}`;
+            if (ctx.hasUI) ctx.ui.notify(msg, "error");
+            else process.stdout.write(`${msg}\n`);
+          } else {
+            const ok = `Opened tmux window for ${peerName} (fallback)`;
+            if (ctx.hasUI) ctx.ui.notify(ok, "info");
+            else process.stdout.write(`${ok}\n`);
+          }
         }
-
-        const ok = `Opened tmux window for ${peerName} (${sessionPath})`;
-        if (ctx.hasUI) ctx.ui.notify(ok, "info");
-        else process.stdout.write(`${ok}\n`);
         return;
       }
 
