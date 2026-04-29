@@ -32,7 +32,7 @@
         "context": "pi-ghosty agent session transcript",
         "async": true,
         "timestampMode": "now",
-        "updateMode": "replace",
+        "updateMode": "append",
         "waitForCompletion": false,
         "waitTimeoutMs": 20000,
         "observationScopes": {
@@ -75,7 +75,7 @@
     "coordinator": {
       "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch", "write", "edit", "bash"],
       "thinkingLevel": "medium",
-      "defaultModel": "my-google-ai-studio/gemini-2.0-flash-exp"
+      "defaultModel": "my-google-ai-studio/gemini-3-flash-preview"
     },
     "coder": {
       "tools": ["read", "grep", "find", "ls", "edit", "write", "bash"],
@@ -83,19 +83,24 @@
       "defaultModel": "openai-codex/gpt-5.3-codex"
     },
     "researcher": {
-      "tools": ["read", "grep", "find", "ls", "write", "edit", "web_search"],
+      "tools": ["read", "grep", "find", "ls", "write", "edit"],
       "thinkingLevel": "medium",
-      "defaultModel": "my-google-ai-studio/gemini-2.0-flash-exp"
+      "defaultModel": "openai-codex/gpt-5.4-mini"
+    },
+    "pilot": {
+      "tools": ["read", "browser_open", "browser_snapshot", "browser_eval"],
+      "thinkingLevel": "medium",
+      "defaultModel": "openai-codex/gpt-5.4-mini"
     },
     "reviewer": {
       "tools": ["read", "grep", "find", "ls", "write", "edit"],
       "thinkingLevel": "medium",
-      "defaultModel": "my-google-ai-studio/gemini-2.0-flash-exp"
+      "defaultModel": "openai-codex/gpt-5.4-mini"
     },
     "memory": {
       "tools": ["read", "grep", "find", "ls"],
       "thinkingLevel": "medium",
-      "defaultModel": "my-google-ai-studio/gemini-2.0-flash-exp"
+      "defaultModel": "vllm/omnicoder-9b"
     }
   },
   "requestRules": [

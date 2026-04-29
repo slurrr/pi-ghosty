@@ -1,5 +1,15 @@
 memory
 
+check retain mission
+
+curl -X PATCH http://localhost:8888/v1/default/banks/pi-ghosty-procedural/config \
+-H "Content-Type: application/json" \
+-d '{
+  "updates": {
+    "retain_mission": "test"
+  }
+}'
+  
 directly list the extracted facts and the consolidated observations via the HTTP API:              
                                                                                                                  
  1) list raw extracted facts (world/experience)                                                                  

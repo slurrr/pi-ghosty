@@ -291,72 +291,77 @@ export function memoryExtensionFactory(
       const recallErrors: Array<{ role: string; bankId: string; error: string }> = [];
 
       for (const target of recallTargets) {
-        const bankStart = performance.now();
         try {
-          const recalled = await hindsight.recall(target.bankId, query, {
-            maxTokens: recallCfg.maxTokens,
-            budget: recallCfg.budget,
-            tags: recallTags,
-            tagsMatch: recallCfg.tagsMatch,
-            types: recallCfg.types,
-            queryTimestamp,
-            includeSourceFacts: recallCfg.includeSourceFacts,
-            maxSourceFactsTokens: recallCfg.includeSourceFactsMaxTokens,
-            includeChunks: recallCfg.includeChunks,
-            maxChunkTokens: recallCfg.includeChunksMaxTokens,
-            async: recallCfg.async,
-          } as any);
+          const bankStart = performance.now();
+          try {
+            const recalled = await hindsight.recall(target.bankId, query, {
+              maxTokens: recallCfg.maxTokens,
+              budget: recallCfg.budget,
+              tags: recallTags,
+              tagsMatch: recallCfg.tagsMatch,
+              types: recallCfg.types,
+              queryTimestamp,
+              includeSourceFacts: recallCfg.includeSourceFacts,
+              maxSourceFactsTokens: recallCfg.includeSourceFactsMaxTokens,
+              includeChunks: recallCfg.includeChunks,
+              maxChunkTokens: recallCfg.includeChunksMaxTokens,
+              async: recallCfg.async,
+            } as any);
 
-          recallPayloads[target.role] = recalled;
-          const facts: any[] = (recalled as any)?.facts ?? (recalled as any)?.results ?? [];
-          const memoryLines = Array.isArray(facts)
-            ? facts
-                .slice(0, recallCfg.maxFacts)
-                .map((f) => (typeof f.text === "string" ? f.text.trim() : null))
-                .filter((x): x is string => !!x)
-            : [];
+            recallPayloads[target.role] = recalled;
+            const facts: any[] = (recalled as any)?.facts ?? (recalled as any)?.results ?? [];
+            const memoryLines = Array.isArray(facts)
+              ? facts
+                  .slice(0, recallCfg.maxFacts)
+                  .map((f) => (typeof f.text === "string" ? f.text.trim() : null))
+                  .filter((x): x is string => !!x)
+              : [];
 
-          totalFactsCount += Array.isArray(facts) ? facts.length : 0;
-          if (memoryLines.length > 0) {
-            allLines.push(`memory_${target.role}_bank ${target.bankId}`);
-            allLines.push(...memoryLines);
-            allLines.push("");
+            totalFactsCount += Array.isArray(facts) ? facts.length : 0;
+            if (memoryLines.length > 0) {
+              allLines.push(`memory_${target.role}_bank ${target.bankId}`);
+              allLines.push(...memoryLines);
+              allLines.push("");
+            }
+
+            await trace.append({
+              type: "memory_recall",
+              projectTag,
+              bankId: target.bankId,
+              bankRole: target.role,
+              agentName,
+              sessionId,
+              ms: Math.round(performance.now() - bankStart),
+              queryLen: query.length,
+              estimatedQueryTokensRaw: estimatedBeforeTrim,
+              estimatedQueryTokensFinal: shaped.estimatedTokens,
+              queryTrimmed: shaped.estimatedTokens < estimatedBeforeTrim,
+              queryTimestamp: queryTimestamp ?? null,
+              includeSourceFacts: recallCfg.includeSourceFacts,
+              includeChunks: recallCfg.includeChunks,
+              factsCount: Array.isArray(facts) ? facts.length : null,
+              injectedLines: memoryLines.length,
+              injectedChars: memoryLines.join("\n").length,
+            });
+          } catch (err: any) {
+            const error = err?.message ?? String(err);
+            const isConnectionError = error.includes("fetch failed") || error.includes("ECONNREFUSED") || error.includes("ENOTFOUND");
+            recallErrors.push({ role: target.role, bankId: target.bankId, error });
+            await trace.append({
+              type: isConnectionError ? "memory_recall_connection_error" : "memory_recall_error",
+              projectTag,
+              bankId: target.bankId,
+              bankRole: target.role,
+              agentName,
+              sessionId,
+              ms: Math.round(performance.now() - bankStart),
+              error,
+              estimatedQueryTokensRaw: estimatedBeforeTrim,
+              estimatedQueryTokensFinal: shaped.estimatedTokens,
+            });
           }
-
-          await trace.append({
-            type: "memory_recall",
-            projectTag,
-            bankId: target.bankId,
-            bankRole: target.role,
-            agentName,
-            sessionId,
-            ms: Math.round(performance.now() - bankStart),
-            queryLen: query.length,
-            estimatedQueryTokensRaw: estimatedBeforeTrim,
-            estimatedQueryTokensFinal: shaped.estimatedTokens,
-            queryTrimmed: shaped.estimatedTokens < estimatedBeforeTrim,
-            queryTimestamp: queryTimestamp ?? null,
-            includeSourceFacts: recallCfg.includeSourceFacts,
-            includeChunks: recallCfg.includeChunks,
-            factsCount: Array.isArray(facts) ? facts.length : null,
-            injectedLines: memoryLines.length,
-            injectedChars: memoryLines.join("\n").length,
-          });
-        } catch (err: any) {
-          const error = err?.message ?? String(err);
-          recallErrors.push({ role: target.role, bankId: target.bankId, error });
-          await trace.append({
-            type: "memory_recall_error",
-            projectTag,
-            bankId: target.bankId,
-            bankRole: target.role,
-            agentName,
-            sessionId,
-            ms: Math.round(performance.now() - bankStart),
-            error,
-            estimatedQueryTokensRaw: estimatedBeforeTrim,
-            estimatedQueryTokensFinal: shaped.estimatedTokens,
-          });
+        } catch {
+          // outer safety
         }
       }
 
@@ -485,6 +490,10 @@ export function memoryExtensionFactory(
               ...(retainCfg.updateMode !== "replace" ? { update_mode: retainCfg.updateMode } : {}),
             });
           } catch (directErr: any) {
+            const error = directErr?.message ?? String(directErr);
+            const isConnectionError = error.includes("fetch failed") || error.includes("ECONNREFUSED") || error.includes("ENOTFOUND");
+            if (isConnectionError) throw directErr; // Don't fallback to SDK if it's a connection error
+
             retainTransport = "sdk";
             await trace.append({
               type: "memory_retain_update_mode_fallback",
@@ -494,7 +503,7 @@ export function memoryExtensionFactory(
               agentName,
               sessionId,
               updateMode: retainCfg.updateMode,
-              error: directErr?.message ?? String(directErr),
+              error,
             });
 
             retainResponse = await hindsight.retainBatch(target.bankId, [item as any], {
@@ -671,8 +680,11 @@ export function memoryExtensionFactory(
           });
         } catch (err: any) {
           const t1 = performance.now();
+          const error = err?.message ?? String(err);
+          const isConnectionError = error.includes("fetch failed") || error.includes("ECONNREFUSED") || error.includes("ENOTFOUND");
+
           await trace.append({
-            type: "memory_retain_error",
+            type: isConnectionError ? "memory_retain_connection_error" : "memory_retain_error",
             projectTag,
             bankId: target.bankId,
             bankRole: target.role,
@@ -681,8 +693,25 @@ export function memoryExtensionFactory(
             ms: Math.round(t1 - t0),
             documentId,
             transcriptChars: transcript.length,
-            error: err?.message ?? String(err),
+            error,
           });
+
+          // If connection error, ensure we at least wrote the request to disk for potential recovery
+          try {
+            const turn = activeTurn;
+            if (turn?.turnDir) {
+              writeJson(resolve(turn.turnDir, `retain-failed-${target.role}.json`), {
+                ts: new Date().toISOString(),
+                bankId: target.bankId,
+                error,
+                isConnectionError,
+                item,
+              });
+            }
+          } catch {
+            // ignore
+          }
+
           await trace.append({
             type: "memory_latency",
             projectTag,

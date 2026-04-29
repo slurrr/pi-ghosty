@@ -27,6 +27,7 @@ import {
   routingDecisionSchema,
   type DelegationLaunch,
   type DelegationReport,
+  type PeerOutput,
 } from "../../../lib/delegation/contracts.js";
 import { delegationReportPath, delegationReportTitle, writeDelegationReport } from "../../../lib/delegation/delegationReports.js";
 import { createPeerReportTool } from "../../../lib/delegation/peerReportTool.js";
@@ -38,9 +39,11 @@ import { resolveProjectPresetEnabledModels, setProjectEnabledModels } from "../.
 import { memoryExtensionFactory } from "../../../lib/extensions/memoryExtension.js";
 import { roleSystemPromptExtensionFactory } from "../../../lib/extensions/roleSystemPromptExtension.js";
 import { samplingExtensionFactory } from "../../../lib/extensions/samplingExtension.js";
+import { progressTraceExtensionFactory } from "../../../lib/extensions/progressTraceExtension.js";
 import { JsonlTrace } from "../../../lib/logging/jsonlTrace.js";
 import { WorkflowMonitor, getWorkflowMonitor } from "../../../lib/workflow/workflowMonitor.js";
 import { lastAssistantText, safeJsonParse, shellQuote } from "../../../lib/utils/helpers.js";
+import { registerBrowserTools } from "../../../lib/tools/browser.js";
 
 const GHOSTY_PROMPT_MARKER = "GHOSTY_PROMPT_MARKER_v1";
 
@@ -151,7 +154,23 @@ export default function (pi: any) {
     runDir,
     agentName: "coordinator",
     config: config.defaults.workflowMonitor,
+    onInterrupt: (record) => {
+      pi.sendMessage({
+        customType: "ghosty-workflow-interrupt",
+        content: `GHOSTY WORKFLOW INTERRUPT: ${record.title}\n\nSummary: ${record.summary}\nRecommendation: ${record.recommendation}\nScore: ${record.score} (Threshold: ${config.defaults.workflowMonitor.interruptThreshold})`,
+        display: true,
+        details: record,
+      }, {
+        deliverAs: "steer",
+        triggerTurn: true,
+      });
+    }
   });
+
+  const samplingTraceEnabled = (() => {
+    const raw = String(process.env.GHOSTY_SAMPLING_TRACE ?? "").trim().toLowerCase();
+    return ["1", "true", "yes", "y", "on"].includes(raw);
+  })();
 
   samplingExtensionFactory(config, "coordinator", {
     runDir,
@@ -159,6 +178,8 @@ export default function (pi: any) {
     projectTag: config.defaults.projectTag,
     traceSampling: samplingTraceEnabled,
   })(pi);
+
+  registerBrowserTools(pi, { runDir });
 
   const maxParallelDelegations = config.routing.defaults.maxParallelDelegations;
   const delegationSemaphore = new Semaphore(maxParallelDelegations);
@@ -472,11 +493,6 @@ export default function (pi: any) {
     return ["1", "true", "yes", "y", "on"].includes(raw);
   })();
 
-  const samplingTraceEnabled = (() => {
-    const raw = String(process.env.GHOSTY_SAMPLING_TRACE ?? "").trim().toLowerCase();
-    return ["1", "true", "yes", "y", "on"].includes(raw);
-  })();
-
   let activeRole = "coordinator";
   const wiredMemorySessions = new Set<string>();
 
@@ -547,6 +563,13 @@ export default function (pi: any) {
 
     const ghostyStatus = ctx.ui?.theme?.fg?.("accent", "ghosty: active") ?? "ghosty: active";
     ctx.ui?.setStatus?.("ghosty", ghostyStatus);
+  });
+
+  pi.on?.("turn_end", async (_event: any, ctx: any) => {
+    const role = inferRoleFromSessionFile(ctx?.sessionManager?.getSessionFile?.());
+    if (role !== "coordinator") return undefined;
+    void runWorkflowMonitor("turn_end");
+    return undefined;
   });
 
   pi.on?.("input", async (_event: any, ctx: any) => {
@@ -1251,6 +1274,12 @@ export default function (pi: any) {
                 projectTag: config.defaults.projectTag,
                 traceSampling: samplingTraceEnabled,
               }),
+              progressTraceExtensionFactory({
+                runDir,
+                sessionId: peerSessionId,
+                projectTag: config.defaults.projectTag,
+                agentName: parsed.peerName,
+              }),
               ...(memoryDisabled ? [] : [memoryExtensionFactory(memoryEnv, config, parsed.peerName, peerSessionId, { runDir })]),
               roleSystemPromptExtensionFactory(parsed.peerName),
             ],
@@ -1281,6 +1310,9 @@ export default function (pi: any) {
         session.setActiveToolsByName([...allowedTools, "peer_report"]);
 
         const before = session.messages.length;
+        const peerProgressTrace = JsonlTrace.forAgent(runDir, parsed.peerName, peerSessionId);
+        const promptStartedAt = Date.now();
+        let progressTimer: ReturnType<typeof setInterval> | null = null;
 
         let resolveCompletion!: (report: DelegationReport) => void;
         let rejectCompletion!: (error: Error) => void;
@@ -1294,6 +1326,25 @@ export default function (pi: any) {
           if (!pending) return completion;
           if (pending.settled) return completion;
           pending.settled = true;
+          if (progressTimer) {
+            clearInterval(progressTimer);
+            progressTimer = null;
+          }
+
+          try {
+            await peerProgressTrace.append({
+              type: "delegate_progress",
+              projectTag: config.defaults.projectTag,
+              agentName: parsed.peerName,
+              sessionId: peerSessionId,
+              jobId,
+              phase: "completed",
+              elapsedSec: Math.max(0, Math.round((Date.now() - promptStartedAt) / 1000)),
+              reportSource,
+            });
+          } catch {
+            // best-effort observability only
+          }
 
           const completedAt = new Date().toISOString();
           let report: DelegationReport = {
@@ -1422,6 +1473,34 @@ export default function (pi: any) {
           routingAction: routing.action,
         });
 
+        try {
+          await peerProgressTrace.append({
+            type: "delegate_progress",
+            projectTag: config.defaults.projectTag,
+            agentName: parsed.peerName,
+            sessionId: peerSessionId,
+            jobId,
+            phase: "started",
+            routingAction: routing.action,
+          });
+        } catch {
+          // best-effort observability only
+        }
+
+        progressTimer = setInterval(() => {
+          void peerProgressTrace.append({
+            type: "delegate_progress",
+            projectTag: config.defaults.projectTag,
+            agentName: parsed.peerName,
+            sessionId: peerSessionId,
+            jobId,
+            phase: "running",
+            elapsedSec: Math.max(0, Math.round((Date.now() - promptStartedAt) / 1000)),
+          }).catch(() => {
+            // best-effort observability only
+          });
+        }, 10000);
+
         const promptPromise = session.prompt(delegationMessage, { source: "extension" });
         promptPromise
           .then(async () => {
@@ -1452,6 +1531,20 @@ export default function (pi: any) {
             const current = pendingDelegations.get(jobId);
             if (!current || current.settled) return;
             const message = err?.message ?? String(err);
+            try {
+              await peerProgressTrace.append({
+                type: "delegate_progress",
+                projectTag: config.defaults.projectTag,
+                agentName: parsed.peerName,
+                sessionId: peerSessionId,
+                jobId,
+                phase: "failed",
+                elapsedSec: Math.max(0, Math.round((Date.now() - promptStartedAt) / 1000)),
+                error: message,
+              });
+            } catch {
+              // best-effort observability only
+            }
             await current.finalize({ summary: `delegation failed: ${message}` }, "text", message);
           });
 

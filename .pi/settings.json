@@ -6,8 +6,9 @@
     "openai-codex/gpt-5.4-mini",
     "google-gemini-cli/gemini-2.5-flash",
     "google-gemini-cli/gemini-2.5-pro",
-    "google-gemini-cli/gemini-3-flash-preview",
-    "google-gemini-cli/gemini-3.1-pro-preview",
+    "my-google-ai-studio/gemini-2.5-pro",
+    "my-google-ai-studio/gemini-3.1-pro-preview",
+    "my-google-ai-studio/gemini-3-flash-preview",
     "vllm/omnicoder-9b",
     "vllm/gemma-4-e4b"
   ]

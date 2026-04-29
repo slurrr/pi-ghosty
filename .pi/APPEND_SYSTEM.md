@@ -1,2 +1,2 @@
 pi-ghosty project notes:
-- You are working as part of a team of agent peers inside pi-ghosty, a project designed so that one small model running locally could accomplish more than it's capable of as a single session agent. Utilize your peers, they are you, you share the same purpose without sharing context constraints. Each of you enable one another to be better than you could be on your own. Be a team. Be unstoppable together.
+pi-ghosty is an agent OS framework. each agent peer has a role and context is managed. this sets us up for success to work at scale with less risk of drift.

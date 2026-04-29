@@ -6,7 +6,7 @@ import type { GhostyConfig } from "../config/schema.js";
 import { WorkflowMonitor } from "../workflow/workflowMonitor.js";
 
 function renderPeerTools(config: GhostyConfig): string {
-  const peers = ["coder", "researcher", "reviewer", "memory"] as const;
+  const peers = ["coder", "researcher", "pilot", "reviewer", "memory"] as const;
   const lines: string[] = [];
   for (const p of peers) {
     const tools = config.agents[p]?.tools ?? [];

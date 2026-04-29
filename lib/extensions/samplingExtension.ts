@@ -36,6 +36,7 @@ export function samplingExtensionFactory(
   return (pi) => {
     let logged = false;
     let loggedPatch = false;
+    let requestSeq = 0;
 
     pi.on("before_provider_request", async (event, ctx) => {
       const model = ctx?.model ? { provider: ctx.model.provider, id: ctx.model.id } : null;
@@ -55,6 +56,18 @@ export function samplingExtensionFactory(
           model,
           resolvedSampling,
           resolvedExtraBody,
+        });
+      }
+
+      if (trace) {
+        requestSeq += 1;
+        await trace.append({
+          type: "sampling_request",
+          projectTag: debug.projectTag,
+          agentName,
+          sessionId: debug.sessionId,
+          seq: requestSeq,
+          model,
         });
       }
 

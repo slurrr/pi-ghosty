@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "."
+  },
+  "include": ["lib/**/*.ts", ".pi/extensions/ghosty/index.ts"]
+}

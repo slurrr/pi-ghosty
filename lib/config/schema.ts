@@ -137,6 +137,7 @@ export const workflowMonitorSchema = z.object({
   lookbackHours: z.number().int().positive().default(72),
   candidateThreshold: z.number().int().positive().default(2),
   winnerThreshold: z.number().int().positive().default(6),
+  interruptThreshold: z.number().int().positive().default(12),
   surfaceTopN: z.number().int().positive().default(5),
 });
 

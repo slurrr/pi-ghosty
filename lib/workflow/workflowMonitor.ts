@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import type { ExtensionFactory } from "@mariozechner/pi-coding-agent";
 import type { WorkflowMonitorConfig } from "../config/schema.js";
 
 export type WorkflowSignalKind = "pain" | "win";
-export type WorkflowCandidateStatus = "candidate" | "winner" | "parked";
+export type WorkflowCandidateStatus = "candidate" | "winner" | "interrupt" | "parked";
 
 export interface WorkflowSignalEvidence {
   ts: string;
@@ -85,6 +85,7 @@ interface WorkflowMonitorArgs {
   runDir: string;
   agentName: string;
   config: WorkflowMonitorConfig;
+  onInterrupt?: (record: WorkflowCandidateRecord) => void;
 }
 
 const workflowMonitorSingletonKey = Symbol.for("ghosty.workflowMonitorSingleton");
@@ -386,33 +387,69 @@ function signalSeedFromEvent(event: Record<string, unknown>, source: WorkflowSou
       }
       return [];
 
-    case "memory_recall_error":
+    case "memory_recall_connection_error":
       return [
         mk({
           kind: "pain",
           category: "memory-stability",
-          title: "memory recall is getting in the way",
-          summary: error ? `recall failed: ${error}` : "memory recall failed",
-          recommendation: "keep recall best-effort and bounded so the core flow does not have to fight the memory layer",
-          score: 4,
-          signatureParts: [peerName, error],
-          detail: error ?? "memory recall error",
+          title: "memory recall server is unreachable",
+          summary: error ? `recall could not connect: ${error}` : "memory recall connection failed",
+          recommendation: "check if the Hindsight server is running; recall is staying best-effort and the session will continue",
+          score: 1,
+          signatureParts: [peerName, "connection_error"],
+          detail: error ?? "memory recall connection error",
         }),
       ];
 
-    case "memory_retain_error":
+    case "memory_recall_error": {
+      const isConnectionError = error?.includes("fetch failed") || error?.includes("ECONNREFUSED") || error?.includes("ENOTFOUND");
       return [
         mk({
           kind: "pain",
           category: "memory-stability",
-          title: "memory writes are not sticking",
+          title: isConnectionError ? "memory recall server is unreachable" : "memory recall is failing",
+          summary: error ? `recall failed: ${error}` : "memory recall failed",
+          recommendation: isConnectionError 
+            ? "check if the Hindsight server is running; recall is staying best-effort and the session will continue"
+            : "investigate why the memory bank is returning errors even when reachable",
+          score: isConnectionError ? 1 : 4,
+          signatureParts: [peerName, isConnectionError ? "connection_error" : error],
+          detail: error ?? "memory recall error",
+        }),
+      ];
+    }
+
+    case "memory_retain_connection_error":
+      return [
+        mk({
+          kind: "pain",
+          category: "memory-stability",
+          title: "memory retain server is unreachable",
+          summary: error ? `retain could not connect: ${error}` : "memory retain connection failed",
+          recommendation: "ensure Hindsight is up; failed writes are being saved locally for future recovery",
+          score: 2,
+          signatureParts: [peerName, "connection_error"],
+          detail: error ?? "memory retain connection error",
+        }),
+      ];
+
+    case "memory_retain_error": {
+      const isConnectionError = error?.includes("fetch failed") || error?.includes("ECONNREFUSED") || error?.includes("ENOTFOUND");
+      return [
+        mk({
+          kind: "pain",
+          category: "memory-stability",
+          title: isConnectionError ? "memory retain server is unreachable" : "memory writes are failing",
           summary: error ? `retain failed: ${error}` : "memory retain failed",
-          recommendation: "keep the memory write path durable and boring so the rest of the system can trust it",
-          score: 5,
-          signatureParts: [peerName, error],
+          recommendation: isConnectionError
+            ? "ensure Hindsight is up; failed writes are being saved locally for future recovery"
+            : "check the memory bank configuration and Hindsight logs for write rejections",
+          score: isConnectionError ? 2 : 5,
+          signatureParts: [peerName, isConnectionError ? "connection_error" : error],
           detail: error ?? "memory retain error",
         }),
       ];
+    }
 
     case "memory_operation_status": {
       const status = String(event.status ?? "").toLowerCase();
@@ -509,7 +546,7 @@ function mergeSignals(seeds: WorkflowSignalSeed[], config: WorkflowMonitorConfig
   for (const seed of seeds) {
     const existing = byFingerprint.get(seed.fingerprint);
     if (!existing) {
-      const status = seed.score >= config.winnerThreshold ? "winner" : seed.score >= config.candidateThreshold ? "candidate" : "parked";
+      const status = seed.score >= config.interruptThreshold ? "interrupt" : seed.score >= config.winnerThreshold ? "winner" : seed.score >= config.candidateThreshold ? "candidate" : "parked";
       byFingerprint.set(seed.fingerprint, {
         id: seed.fingerprint,
         kind: seed.kind,
@@ -533,11 +570,14 @@ function mergeSignals(seeds: WorkflowSignalSeed[], config: WorkflowMonitorConfig
     existing.firstSeen = seed.evidence.ts < existing.firstSeen ? seed.evidence.ts : existing.firstSeen;
     existing.evidence.push(seed.evidence);
     if (existing.evidence.length > 5) existing.evidence = existing.evidence.slice(-5);
-    existing.status = existing.score >= config.winnerThreshold ? "winner" : existing.score >= config.candidateThreshold ? "candidate" : "parked";
+    existing.status = existing.score >= config.interruptThreshold ? "interrupt" : existing.score >= config.winnerThreshold ? "winner" : existing.score >= config.candidateThreshold ? "candidate" : "parked";
   }
 
   return [...byFingerprint.values()].sort((a, b) => {
-    if (a.status !== b.status) return a.status === "winner" ? -1 : b.status === "winner" ? 1 : a.status === "candidate" ? -1 : 1;
+    if (a.status !== b.status) {
+      const order: Record<WorkflowCandidateStatus, number> = { interrupt: 0, winner: 1, candidate: 2, parked: 3 };
+      return order[a.status] - order[b.status];
+    }
     if (a.score !== b.score) return b.score - a.score;
     if (a.count !== b.count) return b.count - a.count;
     return b.lastSeen.localeCompare(a.lastSeen);
@@ -721,6 +761,15 @@ export class WorkflowMonitor {
     const signals: WorkflowSignalSeed[] = [];
 
     for (const filePath of files) {
+      try {
+        const stats = statSync(filePath);
+        if (!force && this.state.lastProcessedAt && stats.mtime.toISOString() <= this.state.lastProcessedAt) {
+          continue;
+        }
+      } catch {
+        // skip if stat fails
+      }
+
       const source = parseSourceFile(this.args.runDir, filePath);
       const records = readJsonlRecords<Record<string, unknown>>(filePath);
       for (const record of records) {
@@ -773,6 +822,14 @@ export class WorkflowMonitor {
       surfacedWinnerIds.push(winner.id);
       appendJsonl(this.candidateLogPath(), { ts: startedAt, reviewReason: reason, record: winner });
     }
+
+    const interrupts = candidates.filter((c) => c.status === "interrupt");
+    for (const inter of interrupts) {
+      const previous = this.state.surfacedIds[inter.id];
+      if (previous === "interrupt") continue;
+      this.args.onInterrupt?.(inter);
+    }
+
     for (const candidate of candidates) {
       if (candidate.status === "winner") continue;
       const previous = this.state.surfacedIds[candidate.id];

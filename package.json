@@ -10,7 +10,7 @@
     "dev:debug": "GHOSTY_DEBUG_ALL=1 node scripts/dev-pi-extension.mjs",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
     "kill": "node scripts/ghosty-kill.mjs",
     "retain": "node scripts/set-retain-mission.mjs",
     "retain:verbose": "node scripts/set-retain-mission.mjs \"Be liberal with retaining durable facts, preferences, decisions, recurring patterns, and likely-useful context for testing.\"",

@@ -1,30 +1,29 @@
 # Current Goal
 - Finalize `pi-ghosty` as a daily-driver agent harness with reliable multi-peer routing and deep web grounding.
-- Revisit and refine `pi-agent.json` default model selections.
-- Harden the `WorkflowMonitor` logic in `lib/workflow/`.
+- Transition to a specialized "Agent OS" architecture using cost-aware model allocation.
+- Harden the `WorkflowMonitor` logic and stabilize the multi-model hybrid engine.
 
 # Current State
-- **`bb-browser` Grounding**: Verified and stable via CDP port `19825`. Successfully bypassing anti-bot measures using the authenticated profile link.
-- **Architecture Refactor**: **COMPLETED**. 
-  - `src/` renamed to `lib/`. 
-  - Legacy runtime remnants (`lib/pi/`, `lib/env.ts`, `lib/memory/hindsight.ts`) deleted.
-  - vLLM discovery logic successfully migrated to `lib/config/vllmProvider.ts`.
-  - Extension entry point (`.pi/extensions/ghosty/index.ts`) slimmed down; utilities moved to `lib/utils/helpers.ts`.
-- **Visibility (War Room)**: **COMPLETED**. 
-  - `/ghosty peer open` now defaults to a "War Room" layout: coordinator on left, peer interactive session top-right, and live JSONL log tail bottom-right.
-  - `GHOSTY_SAMPLING_TRACE=1` wired in to stream raw LLM tokens to the log pane.
-- **Model Routing**: Agent-specific `defaultModel` and `thinkingLevel` enforced from `pi-agent.json` for all peers on startup.
+- **Cost-Aware Configuration**: **LOCKED IN** in `pi-agent.json`.
+  - Coordinator: `gemini-3-flash-preview` (AI Studio - Plan-heavy).
+  - Coder: `gpt-5.3-codex` (OpenAI Plus Quota).
+  - Researcher/Reviewer: `gpt-5.4-mini` (OpenAI Plus Quota - Zero credit burn).
+  - Memory: `vllm/omnicoder-9b` (Local - Zero cost).
+- **Architecture Refactor**: **COMPLETED**. `src/` moved to `lib/`, legacy runtime removed.
+- **Visibility**: **COMPLETED**. "War Room" layout (Coordinator + Peer + Live Log) is the default for `/ghosty peer open`.
+- **Grounding**: `bb-browser` stable on port 19825.
+- **Thinking Models**: Verified. Thinking support for Gemini is handled via `~/.pi/agent/models.json` overrides.
 
 # Decisions
-- **Extension-Only Model**: All future development happens in `.pi/extensions/ghosty/` (brain) and `lib/` (modular body).
-- **War Room Default**: Visibility into peer "frozen" states is prioritized via live log tailing in a vertical tmux split.
-- **Grounding Protocol**: Favor `bb-browser open` -> `snapshot`/`eval` for robustness over brittle site adapters.
+- **Agent OS Strategy**: Use Fast Gemini for coordination, Codex for implementation, and OpenAI Mini/Local models for specialists to maximize subscription value and minimize credit burn.
+- **Threshold Awareness**: Gemini 1.5 Flash is identified as the "Worker Bee" for cost-efficient document scanning ($0.075/1M tokens under 128k context).
+- **Tracing**: `GHOSTY_SAMPLING_TRACE=1` is the toggle for real-time visibility into the "frozen" state of the LLM.
 
 # Open Problems
-- `pi-agent.json` model defaults: Need to verify if the current mix of `gemini-3-flash-preview` and `gpt-5.3-codex` is optimal for the current workloads.
-- Workflow Monitor: Current screening is deterministic; needs verification for proactive interrupt power in long-running loops.
+- **Workflow Monitor**: Needs hardening to ensure proactive "interrupt" power for long-running sessions.
+- **Peer Specialization**: Need to implement the tool-surface partitioning (e.g., ensuring `bb-browser` is exclusive to a Pilot peer) as outlined in the roadmap.
 
 # Resume Instructions
-1. Review `pi-agent.json` default models.
-2. Verify local vLLM registration via new `vllmProvider.ts` wiring.
-3. Proceed to hardening `WorkflowMonitor` in `lib/workflow/`.
+1. Review `docs/architecture/agent-os-peer-directory.md` for proposed new peers (Spec Writer, BB-Browser Pilot).
+2. Begin hardening `lib/workflow/WorkflowMonitor.ts`.
+3. Monitor Gemini credit burn vs. OpenAI Plus usage under the new `mini` model assignments.
