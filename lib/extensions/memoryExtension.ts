@@ -1,11 +1,15 @@
 import { estimateTokens, type ExtensionFactory } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import { dirname, resolve } from "node:path";
 import type { GhostyConfig } from "../config/schema.js";
 import {
+  bankMemoriesUrl,
   createHindsightClient,
+  getBankConfigDirect,
+  getHindsightServerCapabilities,
   getOperationStatusDirect,
   retainMemoriesDirect,
   type RetainMemoryItem,
@@ -115,6 +119,10 @@ function sleep(ms: number): Promise<void> {
 
 function safeTsId(ts: string): string {
   return ts.replace(/[:.]/g, "-");
+}
+
+function sha1(text: string): string {
+  return createHash("sha1").update(text).digest("hex");
 }
 
 function memoryReceiptRoot(runDir: string): string {
@@ -236,6 +244,9 @@ export function memoryExtensionFactory(
     ...(retainCfg.observationScopes.includeSessionScope ? [[`session:${sessionId}`]] : []),
   ];
   const trace = JsonlTrace.forAgent(paths.runDir, agentName, sessionId);
+  let cachedServerCapabilities:
+    | { version?: string; supportsItemUpdateMode: boolean }
+    | null = null;
 
   return (pi) => {
     // Async recall timing log (for performance analysis)
@@ -448,6 +459,7 @@ export function memoryExtensionFactory(
       const transcript = messagesToTranscript(event.messages);
       if (!transcript.trim()) return;
 
+      const transcriptSha1 = sha1(transcript);
       const documentId = `${projectTag}/${agentName}/${sessionId}`;
       const eventMessages = Array.isArray((event as any)?.messages) ? (event as any).messages : [];
       const retainTimestamp = (() => {
@@ -481,36 +493,56 @@ export function memoryExtensionFactory(
       for (const target of retainTargets) {
         const t0 = performance.now();
         let retainResponse: any;
-        let retainTransport: "direct" | "sdk" = "direct";
-        try {
+        const retainTransport: "direct" = "direct";
+        const requestedUpdateMode = retainCfg.updateMode;
+        let serverCapabilityError: string | null = null;
+        if (!cachedServerCapabilities) {
           try {
-            retainResponse = await retainMemoriesDirect(baseUrl, target.bankId, {
-              items: [item],
-              async: retainCfg.async,
-              ...(retainCfg.updateMode !== "replace" ? { update_mode: retainCfg.updateMode } : {}),
-            });
-          } catch (directErr: any) {
-            const error = directErr?.message ?? String(directErr);
-            const isConnectionError = error.includes("fetch failed") || error.includes("ECONNREFUSED") || error.includes("ENOTFOUND");
-            if (isConnectionError) throw directErr; // Don't fallback to SDK if it's a connection error
+            cachedServerCapabilities = await getHindsightServerCapabilities(baseUrl);
+          } catch (err: any) {
+            serverCapabilityError = err?.message ?? String(err);
+            cachedServerCapabilities = { supportsItemUpdateMode: false };
+          }
+        }
+        const supportsItemUpdateMode = Boolean(cachedServerCapabilities?.supportsItemUpdateMode);
+        const effectiveUpdateMode = supportsItemUpdateMode ? requestedUpdateMode : "replace";
+        const requestUrl = bankMemoriesUrl(baseUrl, target.bankId);
+        const requestHeaders = { "content-type": "application/json" };
+        const requestItem: RetainMemoryItem = {
+          ...item,
+          ...(supportsItemUpdateMode && requestedUpdateMode !== "replace" ? { update_mode: requestedUpdateMode } : {}),
+        };
+        const requestBody = {
+          items: [requestItem],
+        };
+        const requestBodyJson = JSON.stringify(requestBody);
 
-            retainTransport = "sdk";
+        let bankConfigSnapshot: any = null;
+        let bankConfigError: string | null = null;
+        try {
+          bankConfigSnapshot = await getBankConfigDirect(baseUrl, target.bankId);
+        } catch (err: any) {
+          bankConfigError = err?.message ?? String(err);
+        }
+
+        try {
+          if (requestedUpdateMode !== effectiveUpdateMode) {
             await trace.append({
-              type: "memory_retain_update_mode_fallback",
+              type: "memory_retain_update_mode_unsupported",
               projectTag,
               bankId: target.bankId,
               bankRole: target.role,
               agentName,
               sessionId,
-              updateMode: retainCfg.updateMode,
-              error,
-            });
-
-            retainResponse = await hindsight.retainBatch(target.bankId, [item as any], {
-              async: retainCfg.async,
-              documentId,
+              requestedUpdateMode,
+              effectiveUpdateMode,
+              serverVersion: cachedServerCapabilities?.version ?? null,
+              reason: "current hindsight openapi does not advertise MemoryItem.update_mode",
+              serverCapabilityError,
             });
           }
+
+          retainResponse = await retainMemoriesDirect(baseUrl, target.bankId, requestBody);
 
           const t1 = performance.now();
           const operationIds: string[] = Array.isArray(retainResponse?.operation_ids)
@@ -529,12 +561,18 @@ export function memoryExtensionFactory(
             ms: Math.round(t1 - t0),
             documentId,
             transcriptChars: transcript.length,
+            transcriptSha1,
             tags: baseTags,
             retainTransport,
-            updateMode: retainCfg.updateMode,
+            requestedUpdateMode,
+            effectiveUpdateMode,
             retainTimestamp,
             operationIds,
             recallMs: lastRecallMs,
+            observationsEnabled: bankConfigSnapshot?.config?.enable_observations ?? null,
+            retainExtractionMode: bankConfigSnapshot?.config?.retain_extraction_mode ?? null,
+            serverVersion: cachedServerCapabilities?.version ?? null,
+            supportsItemUpdateMode,
           });
 
           try {
@@ -561,9 +599,21 @@ export function memoryExtensionFactory(
               bankId: target.bankId,
               bankRole: target.role,
               baseUrl,
-              async: retainCfg.async,
-              updateMode: retainCfg.updateMode,
-              item,
+              requestUrl,
+              requestMethod: "POST",
+              requestHeaders,
+              configuredAsync: retainCfg.async,
+              requestedUpdateMode,
+              effectiveUpdateMode,
+              transcriptChars: transcript.length,
+              transcriptSha1,
+              documentId,
+              bankConfigError,
+              bankConfigSnapshot,
+              serverCapabilityError,
+              serverCapabilities: cachedServerCapabilities,
+              body: requestBody,
+              bodyJson: requestBodyJson,
             });
             writeJson(resolve(turnDir, `retain-response-${target.role}.json`), retainResponse);
 
@@ -573,11 +623,17 @@ export function memoryExtensionFactory(
             lines.push(`bankId: ${target.bankId}`);
             lines.push(`documentId: ${documentId}`);
             lines.push(`timestamp: ${retainTimestamp}`);
-            lines.push(`updateMode: ${retainCfg.updateMode}`);
-            lines.push(`async: ${String(retainCfg.async)}`);
+            lines.push(`requestedUpdateMode: ${requestedUpdateMode}`);
+            lines.push(`effectiveUpdateMode: ${effectiveUpdateMode}`);
+            lines.push(`configuredAsync: ${String(retainCfg.async)}`);
             lines.push(`transport: ${retainTransport}`);
             lines.push(`operationIds: ${operationIds.length ? operationIds.join(", ") : "(none)"}`);
             lines.push(`transcriptChars: ${transcript.length}`);
+            lines.push(`transcriptSha1: ${transcriptSha1}`);
+            lines.push(`observationsEnabled: ${String(bankConfigSnapshot?.config?.enable_observations ?? "?")}`);
+            lines.push(`retainExtractionMode: ${String(bankConfigSnapshot?.config?.retain_extraction_mode ?? "?")}`);
+            lines.push(`serverVersion: ${String(cachedServerCapabilities?.version ?? "?")}`);
+            lines.push(`supportsItemUpdateMode: ${String(supportsItemUpdateMode)}`);
             lines.push("");
             lines.push("raw:");
             lines.push(`- retain-request-${target.role}.json`);
@@ -613,9 +669,16 @@ export function memoryExtensionFactory(
                 ms: Math.round(t1 - t0),
                 documentId,
                 retainTimestamp,
-                updateMode: retainCfg.updateMode,
-                async: retainCfg.async,
+                requestedUpdateMode,
+                effectiveUpdateMode,
+                configuredAsync: retainCfg.async,
                 transport: retainTransport,
+                transcriptChars: transcript.length,
+                transcriptSha1,
+                observationsEnabled: bankConfigSnapshot?.config?.enable_observations ?? null,
+                retainExtractionMode: bankConfigSnapshot?.config?.retain_extraction_mode ?? null,
+                serverVersion: cachedServerCapabilities?.version ?? null,
+                supportsItemUpdateMode,
                 operationIds,
               };
               writeJson(latestPath, latest);
@@ -705,7 +768,18 @@ export function memoryExtensionFactory(
                 bankId: target.bankId,
                 error,
                 isConnectionError,
-                item,
+                transcriptSha1,
+                requestedUpdateMode,
+                effectiveUpdateMode,
+                requestUrl,
+                requestMethod: "POST",
+                requestHeaders,
+                requestBody,
+                requestBodyJson,
+                bankConfigError,
+                bankConfigSnapshot,
+                serverCapabilityError,
+                serverCapabilities: cachedServerCapabilities,
               });
             }
           } catch {

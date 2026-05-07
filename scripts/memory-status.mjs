@@ -28,7 +28,25 @@ function uniqBanks(banks) {
   return [...seen.values()];
 }
 
-function main() {
+async function readServerInfo(baseUrl) {
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/openapi.json`, {
+      headers: { accept: "application/json" },
+    });
+    const text = await res.text();
+    const data = text.trim() ? JSON.parse(text) : {};
+    if (!res.ok) return { error: `${res.status} ${res.statusText}` };
+    const memoryItemProps = data?.components?.schemas?.MemoryItem?.properties ?? {};
+    return {
+      version: typeof data?.info?.version === "string" ? data.info.version : null,
+      supportsItemUpdateMode: Object.prototype.hasOwnProperty.call(memoryItemProps, "update_mode"),
+    };
+  } catch (err) {
+    return { error: err?.message || String(err) };
+  }
+}
+
+async function main() {
   const repoRoot = process.cwd();
   const config = readJson(resolve(repoRoot, "pi-agent.json")) ?? {};
   const defaults = config.defaults ?? {};
@@ -52,41 +70,38 @@ function main() {
   ]);
 
   const client = new HindsightClient({ baseUrl });
+  const server = await readServerInfo(baseUrl);
+  const banks = [];
 
-  const run = async () => {
-    const banks = [];
-
-    for (const bank of configuredBanks) {
-      try {
-        const response = await client.getBankConfig(bank.bankId);
-        banks.push({
-          roles: bank.roles,
-          bank_id: response.bank_id,
-          config: response.config,
-          overrides: response.overrides,
-        });
-      } catch (err) {
-        banks.push({
-          roles: bank.roles,
-          bank_id: bank.bankId,
-          error: err?.message || String(err),
-        });
-      }
+  for (const bank of configuredBanks) {
+    try {
+      const response = await client.getBankConfig(bank.bankId);
+      banks.push({
+        roles: bank.roles,
+        bank_id: response.bank_id,
+        config: response.config,
+        overrides: response.overrides,
+      });
+    } catch (err) {
+      banks.push({
+        roles: bank.roles,
+        bank_id: bank.bankId,
+        error: err?.message || String(err),
+      });
     }
+  }
 
-    const output = {
-      base_url: baseUrl,
-      config_file: resolve(repoRoot, "pi-agent.json"),
-      configured_banks: banks,
-    };
-
-    process.stdout.write(JSON.stringify(output, null, 2) + "\n");
+  const output = {
+    base_url: baseUrl,
+    server,
+    config_file: resolve(repoRoot, "pi-agent.json"),
+    configured_banks: banks,
   };
 
-  void run().catch((err) => {
-    process.stderr.write((err?.stack || err?.message || String(err)) + "\n");
-    process.exit(1);
-  });
+  process.stdout.write(JSON.stringify(output, null, 2) + "\n");
 }
 
-main();
+main().catch((err) => {
+  process.stderr.write((err?.stack || err?.message || String(err)) + "\n");
+  process.exit(1);
+});

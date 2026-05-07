@@ -15,13 +15,25 @@ export interface RetainMemoryItem {
   tags?: string[];
   observation_scopes?: "per_tag" | "combined" | "all_combinations" | string[][];
   strategy?: string;
+  update_mode?: "replace" | "append";
 }
 
 export interface RetainMemoryRequest {
   items: RetainMemoryItem[];
   async?: boolean;
-  update_mode?: "replace" | "append";
   document_tags?: string[];
+}
+
+export interface BankConfigResponse {
+  bank_id?: string;
+  config?: Record<string, unknown>;
+  overrides?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface HindsightServerCapabilities {
+  version?: string;
+  supportsItemUpdateMode: boolean;
 }
 
 export interface OperationStatusResponse {
@@ -49,8 +61,52 @@ export function createHindsightClient(cfg: HindsightConfig): HindsightClient {
   return new HindsightClient({ baseUrl: cfg.baseUrl });
 }
 
+export function bankMemoriesUrl(baseUrl: string, bankId: string): string {
+  return `${trimTrailingSlash(baseUrl)}/v1/default/banks/${encodeURIComponent(bankId)}/memories`;
+}
+
+export async function getBankConfigDirect(baseUrl: string, bankId: string): Promise<BankConfigResponse> {
+  const url = `${trimTrailingSlash(baseUrl)}/v1/default/banks/${encodeURIComponent(bankId)}/config`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: { accept: "application/json" },
+  });
+
+  const data = await readJson(response);
+  if (!response.ok) {
+    const error = new Error(`bank config failed (${response.status}): ${JSON.stringify(data)}`);
+    (error as any).status = response.status;
+    (error as any).details = data;
+    throw error;
+  }
+
+  return data as BankConfigResponse;
+}
+
+export async function getHindsightServerCapabilities(baseUrl: string): Promise<HindsightServerCapabilities> {
+  const url = `${trimTrailingSlash(baseUrl)}/openapi.json`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: { accept: "application/json" },
+  });
+
+  const data = await readJson(response);
+  if (!response.ok) {
+    const error = new Error(`openapi failed (${response.status}): ${JSON.stringify(data)}`);
+    (error as any).status = response.status;
+    (error as any).details = data;
+    throw error;
+  }
+
+  const memoryItemProps = (data as any)?.components?.schemas?.MemoryItem?.properties ?? {};
+  return {
+    version: typeof (data as any)?.info?.version === "string" ? (data as any).info.version : undefined,
+    supportsItemUpdateMode: Object.prototype.hasOwnProperty.call(memoryItemProps, "update_mode"),
+  };
+}
+
 export async function retainMemoriesDirect(baseUrl: string, bankId: string, body: RetainMemoryRequest): Promise<any> {
-  const url = `${trimTrailingSlash(baseUrl)}/v1/default/banks/${encodeURIComponent(bankId)}/memories`;
+  const url = bankMemoriesUrl(baseUrl, bankId);
   const response = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },

@@ -73,7 +73,7 @@
   },
   "agents": {
     "coordinator": {
-      "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch", "write", "edit", "bash"],
+      "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch"],
       "thinkingLevel": "medium",
       "defaultModel": "my-google-ai-studio/gemini-3-flash-preview"
     },
@@ -162,7 +162,7 @@
           "temperature": 1.0,
           "topP": 0.95,
           "topK": 64,
-          "presencePenalty": 0.9
+          "presencePenalty": 0
         },
         "extra_body": {
           "chat_template_kwargs": {

@@ -7,7 +7,8 @@ import { basename, resolve } from "node:path";
 
 const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty");
 const extPath = resolve(process.cwd(), ".pi", "extensions", "ghosty", "index.ts");
-const sessionDir = resolve(runDir, "data", "sessions", "coordinator");
+const defaultSessionDir = resolve(runDir, "data", "sessions-smoke", "coordinator");
+const sessionDir = process.env.GHOSTY_PI_SMOKE_SESSION_DIR?.trim() || defaultSessionDir;
 const envConfigPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim();
 const fallbackConfigPath = resolve(process.cwd(), "pi-agent.json");
 const configPath = envConfigPath && existsSync(resolve(process.cwd(), envConfigPath)) ? envConfigPath : fallbackConfigPath;

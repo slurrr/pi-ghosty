@@ -20,7 +20,8 @@
     "smoke:pi-ext": "node scripts/smoke-pi-extension.mjs",
     "memory": "node scripts/memory-status.mjs",
     "memory:status": "node scripts/memory-status.mjs",
-    "memory:receipts": "node scripts/memory-receipts.mjs"
+    "memory:receipts": "node scripts/memory-receipts.mjs",
+    "memory:shapes": "node scripts/inspect-memory-shapes.mjs"
   },
   "keywords": [],
   "author": "",
@@ -28,7 +29,7 @@
   "dependencies": {
     "@mariozechner/pi-ai": "^0.65.0",
     "@mariozechner/pi-coding-agent": "^0.65.0",
-    "@vectorize-io/hindsight-client": "^0.4.22",
+    "@vectorize-io/hindsight-client": "^0.5.6",
     "dotenv": "^17.4.0",
     "zod": "^4.3.6"
   },

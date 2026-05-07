@@ -11,8 +11,8 @@ async function main() {
     body: JSON.stringify({
       updates: {
         retain_extraction_mode: "concise",
-        retain_mission: "Extract reusable procedural and technical context. Focus on content useful across future tasks. CRITICAL: Do NOT extract facts about the memory system itself, model configurations (topP, temperature, etc.), tool definitions, or meta-information like 'transcript was recorded at'. Ignore system-level noise.",
-        observations_mission: "Observations are durable procedural knowledge and reusable project lessons. Prefer observations that make future delegated workers faster and less error-prone."
+        retain_mission: "Retain only facts that relate to projects, tasks, and systems. Focus on content that will help the assistant work more effectively on projects and tasks in future interactions. CRITICAL: Do NOT retain facts about Seth's personal tastes, working style, or interaction rules. There is a whole bank for that purpose this one is specifically for procedural and technical context.",
+        observations_mission: "Observations are stable facts about projects, tasks, and systems. Facts that will help the assistant work more effectively on projects and tasks in future interactions. Synthesize observations across interactions to identify patterns in project types, task workflows, and system configurations. Focus on content that is likely to remain true over time, rather than transient details about specific projects or tasks. ABSOLUTELY NO OBSERVATIONS ABOUT ANYTHING PERSONAL RELATED. Ignore any information that does not directly relate to projects, tasks, or systems."
       }
     })
   });
@@ -24,8 +24,8 @@ async function main() {
     body: JSON.stringify({
       updates: {
         retain_extraction_mode: "concise",
-        retain_mission: "Extract Seth's working style, interaction rules, and recurring personal workflow choices. CRITICAL: Do NOT extract facts about model settings, system configurations, or administrative metadata. Focus only on Seth's direct feedback, stated preferences, and observable work habits.",
-        observations_mission: "Observations are stable facts about Seth. Synthesize facts that are relevant to Seth's preferred workflow and assistant behavior. Facts that will help the assistant and Seth work more effectively together."
+        retain_mission: "Retain facts about Seth's working style, interaction rules, and recurring personal workflow choices. Focus on content that will help the assistant work more effectively with Seth in future interactions. CRITICAL: Do NOT retain facts about projects Seth is working on, specific tasks he is doing, or any model settings, system configurations, or administrative metadata. There is a whole bank for that purpose this one is specifically for Seth's personal tastes.",
+        observations_mission: "Observations are stable facts about Seth. Facts that will help the assistant and Seth work more effectively together. Synthesize observations across interactions to identify patterns in Seth's working style, preferences, and habits. Focus on content that is likely to remain true over time, rather than transient details about specific projects or tasks. ABSOLUTELY NO OBSERVATIONS ABOUT ANYTHING PROJECT, TASK, OR SYSTEM RELATED. Ignore any information that does not directly relate to Seth's personal tastes."
       }
     })
   });

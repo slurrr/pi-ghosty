@@ -1,0 +1,543 @@
+➜ npm run memory:shapes
+
+> pi-ghosty@1.0.0 memory:shapes
+> node scripts/inspect-memory-shapes.mjs
+
+{
+  "base_url": "http://127.0.0.1:8888",
+  "inspected_at": "2026-04-30T18:41:07.422Z",
+  "banks": [
+    {
+      "bank_id": "pi-ghosty-procedural",
+      "config": {
+        "retain_mission": "Extract reusable procedural and technical context. Focus on content useful across future tasks. CRITICAL: Do NOT extract facts about the memory system, model configurations (topP, temperature), tool definitions, or meta-info like \"transcript was recorded at\". Ignore system noise.",
+        "retain_extraction_mode": "concise",
+        "enable_observations": true,
+        "observations_mission": "Observations are durable procedural knowledge and reusable project lessons. Prefer observations that make future delegated workers faster and less error-prone.",
+        "overrides": {
+          "retain_mission": "Extract reusable procedural and technical context. Focus on content useful across future tasks. CRITICAL: Do NOT extract facts about the memory system, model configurations (topP, temperature), tool definitions, or meta-info like \"transcript was recorded at\". Ignore system noise.",
+          "observations_mission": "Observations are durable procedural knowledge and reusable project lessons. Prefer observations that make future delegated workers faster and less error-prone.",
+          "retain_extraction_mode": "concise"
+        }
+      },
+      "stats": {
+        "total_documents": 7,
+        "total_nodes": 979,
+        "total_observations": 323,
+        "nodes_by_fact_type": {
+          "experience": 195,
+          "observation": 323,
+          "world": 461
+        },
+        "pending_operations": 0,
+        "pending_consolidation": 184,
+        "last_consolidated_at": "2026-04-30T18:39:28.525657+00:00"
+      },
+      "documents": [
+        {
+          "id": "project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+          "bank_id": "pi-ghosty-procedural",
+          "text_length": 398956,
+          "memory_unit_count": 630,
+          "created_at": "2026-04-30T14:58:47.169963+00:00",
+          "updated_at": "2026-04-30T15:17:48.451778+00:00",
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "retain_params": {
+            "context": "pi-ghosty agent session transcript"
+          }
+        },
+        {
+          "id": "project:pi-ghosty/coordinator/ad0e8f6d-d80e-459b-97a5-9f3e4fe76414",
+          "bank_id": "pi-ghosty-procedural",
+          "text_length": 10563,
+          "memory_unit_count": 8,
+          "created_at": "2026-04-30T04:41:49.930266+00:00",
+          "updated_at": "2026-04-30T04:43:55.423481+00:00",
+          "tags": [
+            "agent:coordinator",
+            "session:ad0e8f6d-d80e-459b-97a5-9f3e4fe76414",
+            "project:pi-ghosty"
+          ],
+          "retain_params": {
+            "context": "pi-ghosty agent session transcript"
+          }
+        },
+        {
+          "id": "project:pi-ghosty/researcher/938c9387-ac73-4758-9afa-18b0b06e638f",
+          "bank_id": "pi-ghosty-procedural",
+          "text_length": 83,
+          "memory_unit_count": 0,
+          "created_at": "2026-04-30T03:31:02.135483+00:00",
+          "updated_at": "2026-04-30T03:32:07.203586+00:00",
+          "tags": [
+            "agent:researcher",
+            "session:938c9387-ac73-4758-9afa-18b0b06e638f",
+            "project:pi-ghosty"
+          ],
+          "retain_params": {
+            "context": "pi-ghosty agent session transcript"
+          }
+        },
+        {
+          "id": "project:pi-ghosty/coordinator/47e04746-28cc-4c31-8066-50abd919dee5",
+          "bank_id": "pi-ghosty-procedural",
+          "text_length": 122,
+          "memory_unit_count": 0,
+          "created_at": "2026-04-30T03:08:58.050638+00:00",
+          "updated_at": "2026-04-30T03:08:58.050638+00:00",
+          "tags": [
+            "agent:coordinator",
+            "session:47e04746-28cc-4c31-8066-50abd919dee5",
+            "project:pi-ghosty"
+          ],
+          "retain_params": {
+            "context": "pi-ghosty agent session transcript",
+            "event_date": "2026-04-30T03:08:57.575000+00:00"
+          }
+        },
+        {
+          "id": "project:pi-ghosty/coordinator/0fc2b009-e3c0-4a3e-8c0d-5a93142d748b",
+          "bank_id": "pi-ghosty-procedural",
+          "text_length": 477,
+          "memory_unit_count": 2,
+          "created_at": "2026-04-30T03:02:55.286742+00:00",
+          "updated_at": "2026-04-30T03:02:55.286742+00:00",
+          "tags": [
+            "session:0fc2b009-e3c0-4a3e-8c0d-5a93142d748b",
+            "agent:coordinator",
+            "project:pi-ghosty"
+          ],
+          "retain_params": {
+            "context": "pi-ghosty agent session transcript",
+            "event_date": "2026-04-30T03:02:50.076000+00:00"
+          }
+        }
+      ],
+      "sample_world_facts": [
+        {
+          "id": "184feb60-0ba4-4df6-8251-4da121749f2a",
+          "fact_type": "world",
+          "text": "During a session, the agent should update the checkpoint file in place, preferring to rewrite current sections over appending narrative notes, and only appending a dated note for genuinely useful milestones or dead ends. | To maintain a concise and up-to-date record of the session's state.",
+          "context": "pi-ghosty agent session transcript",
+          "date": "2026-04-30T15:14:50.902152+00:00",
+          "chunk_id": "pi-ghosty-procedural_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": ""
+        },
+        {
+          "id": "b89903e3-f9e2-433f-b220-1ccd5be4047b",
+          "fact_type": "world",
+          "text": "At the start of a session, the default behavior is to run the 'checkpoint' command, read any existing checkpoint, and refresh it if it is stale or empty. | To establish a baseline context before starting substantial work.",
+          "context": "pi-ghosty agent session transcript",
+          "date": "2026-04-30T15:14:50.892152+00:00",
+          "chunk_id": "pi-ghosty-procedural_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": "checkpoint"
+        },
+        {
+          "id": "968f4cd3-aa08-4a07-b995-5108a13b4502",
+          "fact_type": "world",
+          "text": "The required sections to maintain in the checkpoint file are Current Goal, Current State, Decisions, Open Problems, and Resume Instructions. | To provide a structured summary of the session's progress and status.",
+          "context": "pi-ghosty agent session transcript",
+          "date": "2026-04-30T15:14:50.882152+00:00",
+          "chunk_id": "pi-ghosty-procedural_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": "Current State, Current Goal, Resume Instructions, Decisions, Open Problems"
+        },
+        {
+          "id": "91c66193-c606-48c6-ad99-94b5dcb4e397",
+          "fact_type": "world",
+          "text": "The file location policy for checkpoints depends on the current working directory: use CHECKPOINT.md in task-roots, notes/session-checkpoint.md in git repos, ~/CHECKPOINT.md under the home tree outside a repo/task root, or CHECKPOINT.md in the current directory otherwise. | To ensure the checkpoint file is saved in the correct location relative to the project structure.",
+          "context": "pi-ghosty agent session transcript",
+          "date": "2026-04-30T15:14:50.872152+00:00",
+          "chunk_id": "pi-ghosty-procedural_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": "task-root, git repo"
+        },
+        {
+          "id": "b0748ca0-a342-4508-a262-decefd34f119",
+          "fact_type": "world",
+          "text": "The goal of checkpointing is to leave a compact, high-signal resume artifact, not to mirror the full conversation history. | To allow another agent or a future session to use the artifact without rescanning the entire repository.",
+          "context": "pi-ghosty agent session transcript",
+          "date": "2026-04-30T15:14:50.862152+00:00",
+          "chunk_id": "pi-ghosty-procedural_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": "resume artifact"
+        }
+      ],
+      "sample_observations": [
+        {
+          "id": "5e8496f9-0243-4534-ac1e-a66395526876",
+          "fact_type": "observation",
+          "text": "The AgentSession.navigateTree() function allows navigation to a target ID and accepts options to summarize, provide custom instructions, or replace existing instructions.",
+          "context": "",
+          "date": "2026-04-30T15:14:49.192152+00:00",
+          "chunk_id": null,
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": ""
+        },
+        {
+          "id": "b688e56e-b832-4253-b46d-1755f54cb2fd",
+          "fact_type": "observation",
+          "text": "Branch summaries are stored as a BranchSummaryEntry object, which includes the summary text, the ID of the old leaf (fromId), and the new leaf position (parentId).",
+          "context": "",
+          "date": "2026-04-30T15:14:49.182152+00:00",
+          "chunk_id": null,
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": ""
+        },
+        {
+          "id": "4c5be04e-5b27-4f06-bd4f-d54fadd9e3af",
+          "fact_type": "observation",
+          "text": "The path summarized during branch switching is the segment from the old leaf back to the common ancestor with the target, stopping at the common ancestor or the first compaction node encountered.",
+          "context": "",
+          "date": "2026-04-30T15:14:49.172152+00:00",
+          "chunk_id": null,
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": ""
+        },
+        {
+          "id": "25923e46-6e1a-4c6f-83b4-a345bc9ec494",
+          "fact_type": "observation",
+          "text": "When switching branches, the user can switch immediately without summarizing, generate a summary using the default prompt, or summarize using a custom prompt by entering focus instructions in an editor.",
+          "context": "",
+          "date": "2026-04-30T15:14:49.162152+00:00",
+          "chunk_id": null,
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": ""
+        },
+        {
+          "id": "52188d9a-f4ea-4aba-8768-ac8dd94f3148",
+          "fact_type": "observation",
+          "text": "Selecting the root user message resets the leaf to null (representing an empty conversation) and places the message text in the editor, effectively restarting the conversation.",
+          "context": "",
+          "date": "2026-04-30T15:14:49.152152+00:00",
+          "chunk_id": null,
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": ""
+        }
+      ]
+    },
+    {
+      "bank_id": "pi-ghosty-personal",
+      "config": {
+        "retain_mission": "Extract Seth's working style, interaction rules, and recurring personal workflow choices. CRITICAL: Do NOT extract facts about model settings, system configurations, or administrative metadata. Focus only on Seth's direct feedback, stated preferences, and observable work habits.",
+        "retain_extraction_mode": "concise",
+        "enable_observations": true,
+        "observations_mission": "Observations are stable facts about Seth. Synthesize facts that are relevant to Seth's preferred workflow and assistant behavior. Facts that will help the assistant and Seth work more effectively together.",
+        "overrides": {
+          "retain_mission": "Extract Seth's working style, interaction rules, and recurring personal workflow choices. CRITICAL: Do NOT extract facts about model settings, system configurations, or administrative metadata. Focus only on Seth's direct feedback, stated preferences, and observable work habits.",
+          "observations_mission": "Observations are stable facts about Seth. Synthesize facts that are relevant to Seth's preferred workflow and assistant behavior. Facts that will help the assistant and Seth work more effectively together.",
+          "retain_extraction_mode": "concise"
+        }
+      },
+      "stats": {
+        "total_documents": 5,
+        "total_nodes": 945,
+        "total_observations": 329,
+        "nodes_by_fact_type": {
+          "experience": 245,
+          "observation": 329,
+          "world": 371
+        },
+        "pending_operations": 0,
+        "pending_consolidation": 74,
+        "last_consolidated_at": "2026-04-30T18:41:04.959708+00:00"
+      },
+      "documents": [
+        {
+          "id": "project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+          "bank_id": "pi-ghosty-personal",
+          "text_length": 398956,
+          "memory_unit_count": 595,
+          "created_at": "2026-04-30T14:58:51.125811+00:00",
+          "updated_at": "2026-04-30T15:21:23.313470+00:00",
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "retain_params": {
+            "context": "pi-ghosty agent session transcript"
+          }
+        },
+        {
+          "id": "project:pi-ghosty/coordinator/ad0e8f6d-d80e-459b-97a5-9f3e4fe76414",
+          "bank_id": "pi-ghosty-personal",
+          "text_length": 10563,
+          "memory_unit_count": 1,
+          "created_at": "2026-04-30T04:41:50.081384+00:00",
+          "updated_at": "2026-04-30T04:43:58.654790+00:00",
+          "tags": [
+            "agent:coordinator",
+            "session:ad0e8f6d-d80e-459b-97a5-9f3e4fe76414",
+            "project:pi-ghosty"
+          ],
+          "retain_params": {
+            "context": "pi-ghosty agent session transcript"
+          }
+        },
+        {
+          "id": "project:pi-ghosty/coordinator/47e04746-28cc-4c31-8066-50abd919dee5",
+          "bank_id": "pi-ghosty-personal",
+          "text_length": 122,
+          "memory_unit_count": 1,
+          "created_at": "2026-04-30T03:09:01.011668+00:00",
+          "updated_at": "2026-04-30T03:09:01.011668+00:00",
+          "tags": [
+            "agent:coordinator",
+            "session:47e04746-28cc-4c31-8066-50abd919dee5",
+            "project:pi-ghosty"
+          ],
+          "retain_params": {
+            "context": "pi-ghosty agent session transcript",
+            "event_date": "2026-04-30T03:08:57.575000+00:00"
+          }
+        },
+        {
+          "id": "project:pi-ghosty/coordinator/0fc2b009-e3c0-4a3e-8c0d-5a93142d748b",
+          "bank_id": "pi-ghosty-personal",
+          "text_length": 477,
+          "memory_unit_count": 3,
+          "created_at": "2026-04-30T03:03:04.761403+00:00",
+          "updated_at": "2026-04-30T03:03:04.761403+00:00",
+          "tags": [
+            "session:0fc2b009-e3c0-4a3e-8c0d-5a93142d748b",
+            "agent:coordinator",
+            "project:pi-ghosty"
+          ],
+          "retain_params": {
+            "context": "pi-ghosty agent session transcript",
+            "event_date": "2026-04-30T03:02:50.076000+00:00"
+          }
+        },
+        {
+          "id": "project:pi-ghosty/coordinator/50687938-b48b-4eae-8259-6df18ade13d3",
+          "bank_id": "pi-ghosty-personal",
+          "text_length": 11542,
+          "memory_unit_count": 16,
+          "created_at": "2026-04-29T16:47:20.574901+00:00",
+          "updated_at": "2026-04-29T16:47:20.574901+00:00",
+          "tags": [
+            "project:pi-ghosty",
+            "agent:coordinator",
+            "session:50687938-b48b-4eae-8259-6df18ade13d3"
+          ],
+          "retain_params": {
+            "context": "pi-ghosty agent session transcript",
+            "event_date": "2026-04-29T16:46:28.919000+00:00"
+          }
+        }
+      ],
+      "sample_world_facts": [
+        {
+          "id": "cba07ba5-7a2a-4198-8924-20b67ff5d149",
+          "fact_type": "world",
+          "text": "The phrase 'we've got the keys to the kingdom now...' is located at the leaf node `901db2e4` within the session tree.",
+          "context": "pi-ghosty agent session transcript",
+          "date": "2026-04-30T15:17:55.699725+00:00",
+          "chunk_id": "pi-ghosty-personal_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_164",
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": "cd048142, 767de947, 901db2e4"
+        },
+        {
+          "id": "1b89f5fb-1026-4962-97ad-51cbdb1736ce",
+          "fact_type": "world",
+          "text": "At the end of a session, the default behavior requires ensuring the checkpoint exists and that the Current State, Open Problems, and Resume Instructions sections are up to date.",
+          "context": "pi-ghosty agent session transcript",
+          "date": "2026-04-30T15:17:55.489725+00:00",
+          "chunk_id": "pi-ghosty-personal_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": "Open Problems, Current State, Resume Instructions"
+        },
+        {
+          "id": "f186ddfb-e93a-44d0-b994-74793ea44aec",
+          "fact_type": "world",
+          "text": "During a session, the default behavior is to update the checkpoint file in place, preferring to rewrite current sections over appending narrative notes, and only appending a short dated note if a milestone or dead end is genuinely useful.",
+          "context": "pi-ghosty agent session transcript",
+          "date": "2026-04-30T15:17:55.479725+00:00",
+          "chunk_id": "pi-ghosty-personal_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": ""
+        },
+        {
+          "id": "70e39819-20c5-44ee-a8eb-fe7c22654c08",
+          "fact_type": "world",
+          "text": "At the start of a session, the default behavior is to run the 'checkpoint' command, read any existing checkpoint, and refresh it if it is stale or empty.",
+          "context": "pi-ghosty agent session transcript",
+          "date": "2026-04-30T15:17:55.469725+00:00",
+          "chunk_id": "pi-ghosty-personal_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": "checkpointing"
+        },
+        {
+          "id": "44768838-33d6-4069-940b-0e6e27076977",
+          "fact_type": "world",
+          "text": "The required sections to maintain in the checkpoint file are Current Goal, Current State, Decisions, Open Problems, and Resume Instructions, and they must be kept short and concrete.",
+          "context": "pi-ghosty agent session transcript",
+          "date": "2026-04-30T15:17:55.459725+00:00",
+          "chunk_id": "pi-ghosty-personal_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": "Open Problems, Current State, Resume Instructions, Current Goal, Decisions"
+        }
+      ],
+      "sample_observations": [
+        {
+          "id": "57e1073e-b3b0-4750-8724-39425cf581b4",
+          "fact_type": "observation",
+          "text": "Custom provider configurations are managed through the file located at ~/.pi/agent/models.json. The system supports several APIs for model interaction, including openai-completions, openai-responses, anthropic-messages, and google-generative-ai. Specifically, the 'my-google-ai-studio' provider is configured with an API key and Gemini models.",
+          "context": "",
+          "date": "2026-04-30T15:17:54.859725+00:00",
+          "chunk_id": null,
+          "proof_count": 3,
+          "tags": [
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty",
+            "agent:coordinator"
+          ],
+          "entities": ""
+        },
+        {
+          "id": "7ef6fb66-122a-49af-b73b-2addad358219",
+          "fact_type": "observation",
+          "text": "The AI agent encountered multiple Cloud Code Assist API errors (429) on April 27, 2026, due to exhausting its capacity on the gemini-3-flash-preview model, with quota reset times varying between 22 and 45 seconds.",
+          "context": "",
+          "date": "2026-04-27T21:40:18.191000+00:00",
+          "chunk_id": null,
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": ""
+        },
+        {
+          "id": "7f567708-9bee-442f-9bde-9f7813d0a9c4",
+          "fact_type": "observation",
+          "text": "A directory listing obtained via the 'ls' tool included files and folders such as AGENTS.md, auth.json, bin/, git/, models.json, prompts/, sessions/, settings.json, skills/, telegram.json, and tmp/ on April 27, 2026.",
+          "context": "",
+          "date": "2026-04-27T21:40:08.456000+00:00",
+          "chunk_id": null,
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": ""
+        },
+        {
+          "id": "e227c3b3-f404-4e2d-b1d4-75088632896e",
+          "fact_type": "observation",
+          "text": "The pi-ghosty agent cross-references the user's AI Pro subscription during a session to determine the optimal configuration for maximum feature utilization.",
+          "context": "",
+          "date": "2026-04-30T15:17:54.879725+00:00",
+          "chunk_id": null,
+          "proof_count": 1,
+          "tags": [
+            "agent:coordinator",
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty"
+          ],
+          "entities": ""
+        },
+        {
+          "id": "050d6672-7fd6-430f-9b8a-c9c649a2e86f",
+          "fact_type": "observation",
+          "text": "System configuration allows routing built-in providers through a proxy and supports customizing specific built-in models via 'modelOverrides'. When merging custom models, built-in models are retained, custom models are upserted by ID, and matching IDs replace built-in models. Customizable fields include 'name', 'reasoning', 'input', 'cost', 'contextWindow', 'maxTokens', 'headers', and 'compat'. For providers with partial OpenAI compatibility, the 'compat' field must be used, which can be defined globally at the provider level (default) or overridden at the model level. Models such as qwen utilize the top-level 'enable_thinking' parameter.",
+          "context": "",
+          "date": "2026-04-30T15:17:54.759725+00:00",
+          "chunk_id": null,
+          "proof_count": 9,
+          "tags": [
+            "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+            "project:pi-ghosty",
+            "agent:coordinator"
+          ],
+          "entities": ""
+        }
+      ]
+    }
+  ]
+}
+[0.276s]                                                                                 

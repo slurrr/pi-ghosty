@@ -1284,7 +1284,7 @@ export default function (pi: any) {
               roleSystemPromptExtensionFactory(parsed.peerName),
             ],
             agentsFilesOverride: (_current) => ({ agentsFiles: [] }),
-            appendSystemPrompt: resolve(projectDir, ".pi", "APPEND_SYSTEM.md"),
+            appendSystemPrompt: [resolve(projectDir, ".pi", "APPEND_SYSTEM.md")] as any,
             additionalSkillPaths: [resolve(projectDir, ".pi", "skills")],
             appendSystemPromptOverride: (base) => {
               const out = [...base];

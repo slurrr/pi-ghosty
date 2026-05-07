@@ -60,6 +60,7 @@ interface WorkflowState {
   lastReviewAt: string | null;
   lastProcessedAt: string | null;
   surfacedIds: Record<string, WorkflowCandidateStatus>;
+  activeCandidates: Record<string, WorkflowCandidateRecord>;
 }
 
 interface WorkflowSignalSeed {
@@ -195,7 +196,16 @@ function signalFingerprint(parts: Array<string | null | undefined>): string {
   return stableHash(parts.filter((p): p is string => !!p && p.trim().length > 0).join("|"));
 }
 
-function signalSeedFromEvent(event: Record<string, unknown>, source: WorkflowSourceFile): WorkflowSignalSeed[] {
+interface ReviewSessionState {
+  lastToolName: string | null;
+  consecutiveErrors: number;
+}
+
+function signalSeedFromEvent(
+  event: Record<string, unknown>, 
+  source: WorkflowSourceFile, 
+  sessionState: ReviewSessionState
+): WorkflowSignalSeed[] {
   const type = String(event.type ?? "").trim();
   if (!type) return [];
   const ts = toIsoTimestamp((event as any).ts) ?? new Date().toISOString();
@@ -224,320 +234,377 @@ function signalSeedFromEvent(event: Record<string, unknown>, source: WorkflowSou
     evidence: createEvidence(source, type, payload.detail, ts),
   });
 
+  const signals: WorkflowSignalSeed[] = [];
+
   switch (type) {
     case "session_route_error":
-      return [
-        mk({
-          kind: "pain",
-          category: "context-alignment",
-          title: "context re-establishment is failing",
-          summary: error ? `routing hit an error: ${error}` : "routing could not settle on a session cleanly",
-          recommendation: "keep stronger session state around so the system can recover without re-litigating the same context",
-          score: 4,
-          signatureParts: [peerName, error],
-          detail: error ?? "session route error",
-        }),
-      ];
+      signals.push(mk({
+        kind: "pain",
+        category: "context-alignment",
+        title: "context re-establishment is failing",
+        summary: error ? `routing hit an error: ${error}` : "routing could not settle on a session cleanly",
+        recommendation: "keep stronger session state around so the system can recover without re-litigating the same context",
+        score: 4,
+        signatureParts: [peerName, error],
+        detail: error ?? "session route error",
+      }));
+      break;
 
     case "session_route_invalid_json":
-      return [
-        mk({
-          kind: "pain",
-          category: "context-alignment",
-          title: "routing outputs are too brittle",
-          summary: "the router returned invalid JSON and had to be ignored",
-          recommendation: "tighten the routing contract or avoid model-based routing when deterministic defaults are enough",
-          score: 4,
-          signatureParts: [peerName, "invalid_json"],
-          detail: error ?? "session route invalid json",
-        }),
-      ];
+      signals.push(mk({
+        kind: "pain",
+        category: "context-alignment",
+        title: "routing outputs are too brittle",
+        summary: "the router returned invalid JSON and had to be ignored",
+        recommendation: "tighten the routing contract or avoid model-based routing when deterministic defaults are enough",
+        score: 4,
+        signatureParts: [peerName, "invalid_json"],
+        detail: error ?? "session route invalid json",
+      }));
+      break;
 
     case "session_route_decision": {
       const reason = String(event.reason ?? "").trim();
       if (action === "new" && reason.toLowerCase().includes("fallback")) {
-        return [
-          mk({
-            kind: "pain",
-            category: "context-alignment",
-            title: "peer routing keeps falling back to the wrong thing",
-            summary: reason || "the router fell back to the most recent session",
-            recommendation: "surface a better default session state before the next turn so routing does not need to guess",
-            score: 3,
-            signatureParts: [peerName, reason || "fallback"],
-            detail: reason || "fallback routing",
-          }),
-        ];
+        signals.push(mk({
+          kind: "pain",
+          category: "context-alignment",
+          title: "peer routing keeps falling back to the wrong thing",
+          summary: reason || "the router fell back to the most recent session",
+          recommendation: "surface a better default session state before the next turn so routing does not need to guess",
+          score: 3,
+          signatureParts: [peerName, reason || "fallback"],
+          detail: reason || "fallback routing",
+        }));
+      } else if (action === "resume" && reason === "single candidate") {
+        signals.push(mk({
+          kind: "win",
+          category: "context-alignment",
+          title: "routing found the right prior session quickly",
+          summary: "session routing resumed a single clear candidate without drama",
+          recommendation: "keep the routing defaults and candidate filtering that make the next turn obvious",
+          score: 1,
+          signatureParts: [peerName, "single candidate"],
+          detail: "single candidate resume",
+        }));
       }
-      if (action === "resume" && reason === "single candidate") {
-        return [
-          mk({
-            kind: "win",
-            category: "context-alignment",
-            title: "routing found the right prior session quickly",
-            summary: "session routing resumed a single clear candidate without drama",
-            recommendation: "keep the routing defaults and candidate filtering that make the next turn obvious",
-            score: 1,
-            signatureParts: [peerName, "single candidate"],
-            detail: "single candidate resume",
-          }),
-        ];
-      }
-      return [];
+      break;
     }
 
     case "session_semantic_enrich_error":
-      return [
-        mk({
-          kind: "pain",
-          category: "context-alignment",
-          title: "session summaries are not enriching cleanly",
-          summary: error ? `semantic enrichment failed: ${error}` : "semantic enrichment failed",
-          recommendation: "make session summaries more deterministic or reduce dependence on enrichment during routing",
-          score: 2,
-          signatureParts: [peerName, error],
-          detail: error ?? "semantic enrich error",
-        }),
-      ];
+      signals.push(mk({
+        kind: "pain",
+        category: "context-alignment",
+        title: "session summaries are not enriching cleanly",
+        summary: error ? `semantic enrichment failed: ${error}` : "semantic enrichment failed",
+        recommendation: "make session summaries more deterministic or reduce dependence on enrichment during routing",
+        score: 2,
+        signatureParts: [peerName, error],
+        detail: error ?? "semantic enrich error",
+      }));
+      break;
 
     case "session_semantic_enrich_invalid_json":
-      return [
-        mk({
-          kind: "pain",
-          category: "context-alignment",
-          title: "session semantic enrichment is too loose",
-          summary: "semantic enrichment returned invalid JSON",
-          recommendation: "treat this as a best-effort hint, not a hard dependency",
-          score: 2,
-          signatureParts: [peerName, "invalid_json"],
-          detail: "invalid json",
-        }),
-      ];
+      signals.push(mk({
+        kind: "pain",
+        category: "context-alignment",
+        title: "session semantic enrichment is too loose",
+        summary: "semantic enrichment returned invalid JSON",
+        recommendation: "treat this as a best-effort hint, not a hard dependency",
+        score: 2,
+        signatureParts: [peerName, "invalid_json"],
+        detail: "invalid json",
+      }));
+      break;
 
     case "delegate_postprocess_error":
-      return [
-        mk({
-          kind: "pain",
-          category: "handoff-integrity",
-          title: "peer handoffs are being dropped after completion",
-          summary: error ? `post-processing failed: ${error}` : "a peer finished but the handoff cleanup failed",
-          recommendation: "keep the report/write/follow-up path atomic so a finished peer job always reaches the coordinator",
-          score: 5,
-          signatureParts: [peerName, error],
-          detail: error ?? "delegate postprocess error",
-        }),
-      ];
+      signals.push(mk({
+        kind: "pain",
+        category: "handoff-integrity",
+        title: "peer handoffs are being dropped after completion",
+        summary: error ? `post-processing failed: ${error}` : "a peer finished but the handoff cleanup failed",
+        recommendation: "keep the report/write/follow-up path atomic so a finished peer job always reaches the coordinator",
+        score: 5,
+        signatureParts: [peerName, error],
+        detail: error ?? "delegate postprocess error",
+      }));
+      break;
 
     case "delegate_report_write_error":
-      return [
-        mk({
-          kind: "pain",
-          category: "handoff-integrity",
-          title: "peer reports are not durable enough",
-          summary: error ? `report write failed: ${error}` : "a peer report could not be written",
-          recommendation: "write peer results to disk before trying to surface them",
-          score: 6,
-          signatureParts: [peerName, error],
-          detail: error ?? "delegate report write error",
-        }),
-      ];
+      signals.push(mk({
+        kind: "pain",
+        category: "handoff-integrity",
+        title: "peer reports are not durable enough",
+        summary: error ? `report write failed: ${error}` : "a peer report could not be written",
+        recommendation: "write peer results to disk before trying to surface them",
+        score: 6,
+        signatureParts: [peerName, error],
+        detail: error ?? "delegate report write error",
+      }));
+      break;
 
     case "delegate_report_injection_error":
-      return [
-        mk({
-          kind: "pain",
-          category: "handoff-integrity",
-          title: "peer results are not reaching the coordinator",
-          summary: error ? `report injection failed: ${error}` : "a peer result could not be injected back into the coordinator session",
-          recommendation: "keep a durable return path even when the interactive injection layer is having a bad day",
-          score: 6,
-          signatureParts: [peerName, error],
-          detail: error ?? "delegate report injection error",
-        }),
-      ];
+      signals.push(mk({
+        kind: "pain",
+        category: "handoff-integrity",
+        title: "peer results are not reaching the coordinator",
+        summary: error ? `report injection failed: ${error}` : "a peer result could not be injected back into the coordinator session",
+        recommendation: "keep a durable return path even when the interactive injection layer is having a bad day",
+        score: 6,
+        signatureParts: [peerName, error],
+        detail: error ?? "delegate report injection error",
+      }));
+      break;
 
     case "delegate_semantic_error":
-      return [
-        mk({
-          kind: "pain",
-          category: "handoff-integrity",
-          title: "peer summaries are too fuzzy",
-          summary: error ? `semantic enrichment on a peer result failed: ${error}` : "peer summary enrichment failed",
-          recommendation: "keep the raw peer output visible and do not depend on a semantic polish pass to preserve the result",
-          score: 3,
-          signatureParts: [peerName, error],
-          detail: error ?? "delegate semantic error",
-        }),
-      ];
+      signals.push(mk({
+        kind: "pain",
+        category: "handoff-integrity",
+        title: "peer summaries are too fuzzy",
+        summary: error ? `semantic enrichment on a peer result failed: ${error}` : "peer summary enrichment failed",
+        recommendation: "keep the raw peer output visible and do not depend on a semantic polish pass to preserve the result",
+        score: 3,
+        signatureParts: [peerName, error],
+        detail: error ?? "delegate semantic error",
+      }));
+      break;
 
     case "delegate_end":
       if (String(event.reportSource ?? "") === "tool") {
-        return [
-          mk({
-            kind: "win",
-            category: "handoff-integrity",
-            title: "peer handoffs are landing cleanly",
-            summary: "a peer finished and reported back through the tool path",
-            recommendation: "keep the non-blocking peer report path as a core habit",
-            score: 2,
-            signatureParts: [peerName, String(event.routingAction ?? ""), "tool"],
-            detail: `peer ${peerName} reported via tool`,
-          }),
-        ];
+        signals.push(mk({
+          kind: "win",
+          category: "handoff-integrity",
+          title: "peer handoffs are landing cleanly",
+          summary: "a peer finished and reported back through the tool path",
+          recommendation: "keep the non-blocking peer report path as a core habit",
+          score: 2,
+          signatureParts: [peerName, String(event.routingAction ?? ""), "tool"],
+          detail: `peer ${peerName} reported via tool`,
+        }));
       }
-      return [];
+      break;
 
     case "memory_recall_connection_error":
-      return [
-        mk({
-          kind: "pain",
-          category: "memory-stability",
-          title: "memory recall server is unreachable",
-          summary: error ? `recall could not connect: ${error}` : "memory recall connection failed",
-          recommendation: "check if the Hindsight server is running; recall is staying best-effort and the session will continue",
-          score: 1,
-          signatureParts: [peerName, "connection_error"],
-          detail: error ?? "memory recall connection error",
-        }),
-      ];
+      signals.push(mk({
+        kind: "pain",
+        category: "memory-stability",
+        title: "memory recall server is unreachable",
+        summary: error ? `recall could not connect: ${error}` : "memory recall connection failed",
+        recommendation: "check if the Hindsight server is running; recall is staying best-effort and the session will continue",
+        score: 1,
+        signatureParts: [peerName, "connection_error"],
+        detail: error ?? "memory recall connection error",
+      }));
+      break;
 
     case "memory_recall_error": {
       const isConnectionError = error?.includes("fetch failed") || error?.includes("ECONNREFUSED") || error?.includes("ENOTFOUND");
-      return [
-        mk({
-          kind: "pain",
-          category: "memory-stability",
-          title: isConnectionError ? "memory recall server is unreachable" : "memory recall is failing",
-          summary: error ? `recall failed: ${error}` : "memory recall failed",
-          recommendation: isConnectionError 
-            ? "check if the Hindsight server is running; recall is staying best-effort and the session will continue"
-            : "investigate why the memory bank is returning errors even when reachable",
-          score: isConnectionError ? 1 : 4,
-          signatureParts: [peerName, isConnectionError ? "connection_error" : error],
-          detail: error ?? "memory recall error",
-        }),
-      ];
+      signals.push(mk({
+        kind: "pain",
+        category: "memory-stability",
+        title: isConnectionError ? "memory recall server is unreachable" : "memory recall is failing",
+        summary: error ? `recall failed: ${error}` : "memory recall failed",
+        recommendation: isConnectionError 
+          ? "check if the Hindsight server is running; recall is staying best-effort and the session will continue"
+          : "investigate why the memory bank is returning errors even when reachable",
+        score: isConnectionError ? 1 : 4,
+        signatureParts: [peerName, isConnectionError ? "connection_error" : error],
+        detail: error ?? "memory recall error",
+      }));
+      break;
     }
 
     case "memory_retain_connection_error":
-      return [
-        mk({
-          kind: "pain",
-          category: "memory-stability",
-          title: "memory retain server is unreachable",
-          summary: error ? `retain could not connect: ${error}` : "memory retain connection failed",
-          recommendation: "ensure Hindsight is up; failed writes are being saved locally for future recovery",
-          score: 2,
-          signatureParts: [peerName, "connection_error"],
-          detail: error ?? "memory retain connection error",
-        }),
-      ];
+      signals.push(mk({
+        kind: "pain",
+        category: "memory-stability",
+        title: "memory retain server is unreachable",
+        summary: error ? `retain could not connect: ${error}` : "memory retain connection failed",
+        recommendation: "ensure Hindsight is up; failed writes are being saved locally for future recovery",
+        score: 2,
+        signatureParts: [peerName, "connection_error"],
+        detail: error ?? "memory retain connection error",
+      }));
+      break;
 
     case "memory_retain_error": {
       const isConnectionError = error?.includes("fetch failed") || error?.includes("ECONNREFUSED") || error?.includes("ENOTFOUND");
-      return [
-        mk({
-          kind: "pain",
-          category: "memory-stability",
-          title: isConnectionError ? "memory retain server is unreachable" : "memory writes are failing",
-          summary: error ? `retain failed: ${error}` : "memory retain failed",
-          recommendation: isConnectionError
-            ? "ensure Hindsight is up; failed writes are being saved locally for future recovery"
-            : "check the memory bank configuration and Hindsight logs for write rejections",
-          score: isConnectionError ? 2 : 5,
-          signatureParts: [peerName, isConnectionError ? "connection_error" : error],
-          detail: error ?? "memory retain error",
-        }),
-      ];
+      signals.push(mk({
+        kind: "pain",
+        category: "memory-stability",
+        title: isConnectionError ? "memory retain server is unreachable" : "memory writes are failing",
+        summary: error ? `retain failed: ${error}` : "memory retain failed",
+        recommendation: isConnectionError
+          ? "ensure Hindsight is up; failed writes are being saved locally for future recovery"
+          : "check the memory bank configuration and Hindsight logs for write rejections",
+        score: isConnectionError ? 2 : 5,
+        signatureParts: [peerName, isConnectionError ? "connection_error" : error],
+        detail: error ?? "memory retain error",
+      }));
+      break;
     }
 
     case "memory_operation_status": {
       const status = String(event.status ?? "").toLowerCase();
       if (["timeout", "failed", "error", "not_found"].includes(status)) {
-        return [
-          mk({
-            kind: "pain",
-            category: "memory-stability",
-            title: "memory operations are not finishing reliably",
-            summary: `memory operation ended with ${status}`,
-            recommendation: "do not block the session on memory completion unless the situation really needs it",
-            score: 3,
-            signatureParts: [peerName, status, String(event.operationId ?? "")],
-            detail: `status=${status}`,
-          }),
-        ];
+        signals.push(mk({
+          kind: "pain",
+          category: "memory-stability",
+          title: "memory operations are not finishing reliably",
+          summary: `memory operation ended with ${status}`,
+          recommendation: "do not block the session on memory completion unless the situation really needs it",
+          score: 3,
+          signatureParts: [peerName, status, String(event.operationId ?? "")],
+          detail: `status=${status}`,
+        }));
       }
-      return [];
+      break;
     }
 
     case "memory_recall": {
       const injectedLines = Number(event.injectedLines ?? 0);
       const factsCount = Number(event.factsCount ?? 0);
       if (injectedLines > 0 || factsCount > 0) {
-        return [
-          mk({
-            kind: "win",
-            category: "memory-stability",
-            title: "memory recall is providing useful context",
-            summary: injectedLines > 0 ? `${injectedLines} recalled lines were injected` : `${factsCount} facts were available for recall`,
-            recommendation: "keep the memory path wired because it is pulling its weight when it shows up",
-            score: 1,
-            signatureParts: [peerName, String(injectedLines), String(factsCount)],
-            detail: `injectedLines=${injectedLines} factsCount=${factsCount}`,
-          }),
-        ];
+        signals.push(mk({
+          kind: "win",
+          category: "memory-stability",
+          title: "memory recall is providing useful context",
+          summary: injectedLines > 0 ? `${injectedLines} recalled lines were injected` : `${factsCount} facts were available for recall`,
+          recommendation: "keep the memory path wired because it is pulling its weight when it shows up",
+          score: 1,
+          signatureParts: [peerName, String(injectedLines), String(factsCount)],
+          detail: `injectedLines=${injectedLines} factsCount=${factsCount}`,
+        }));
       }
-      return [];
+      break;
+    }
+
+    case "provider_request": {
+      const seq = Number(event.seq ?? 0);
+      if (seq >= 20) {
+        signals.push(mk({
+          kind: "pain",
+          category: "resource-exhaustion",
+          title: "session is running very long",
+          summary: `session ${sessionId} reached provider request sequence ${seq}`,
+          recommendation: "consider breaking the task into smaller sub-tasks or forcing a summary/checkpoint",
+          score: seq >= 40 ? 12 : 5,
+          signatureParts: [peerName, "long_session"],
+          detail: `seq=${seq}`,
+        }));
+      }
+      break;
+    }
+
+    case "tool_call": {
+      const toolName = String(event.toolName ?? "unknown");
+      const summary = (event.summary as any) || {};
+      const command = toolName === "bash" ? String(summary.commandPreview ?? "") : "";
+      
+      if (toolName === "bash" && (command.includes("rm -rf") || command.includes("git reset --hard"))) {
+        signals.push(mk({
+          kind: "pain",
+          category: "safety",
+          title: "dangerous command detected",
+          summary: `agent is attempting a destructive command: ${command}`,
+          recommendation: "verify if this is intentional and ensure backups exist",
+          score: 8,
+          signatureParts: [peerName, command],
+          detail: command,
+        }));
+      }
+
+      // Loop detection: every tool call contributes a tiny amount to a "busy" score.
+      // If the exact same tool call (same name + same input summary) happens many times, it will accumulate.
+      const summaryHash = stableHash(JSON.stringify(summary));
+      signals.push(mk({
+        kind: "pain",
+        category: "tool-friction",
+        title: "repetitive tool usage",
+        summary: `tool ${toolName} is being called repeatedly with similar inputs`,
+        recommendation: "check if the agent is stuck in a loop or failing to progress",
+        score: 0.5, // 24 calls to hit interrupt threshold of 12
+        signatureParts: [peerName, toolName, summaryHash],
+        detail: `${toolName} call`,
+      }));
+
+      // General busy-ness signal
+      signals.push(mk({
+        kind: "pain",
+        category: "tool-friction",
+        title: "high tool volume",
+        summary: `agent ${peerName} is making many tool calls`,
+        recommendation: "ensure the agent has enough context to solve the task without excessive trial and error",
+        score: 0.1, // 120 calls to hit interrupt
+        signatureParts: [peerName, "high_volume"],
+        detail: `${toolName} call`,
+      }));
+
+      sessionState.lastToolName = toolName;
+      break;
     }
 
     case "tool_policy_block":
-      return [
-        mk({
-          kind: "pain",
-          category: "tool-friction",
-          title: "tool policy is fighting normal work",
-          summary: `blocked ${String(event.toolName ?? "tool")} because ${String(event.reason ?? "unknown reason")}`,
-          recommendation: "tighten the allowlist only where it actually protects the project and stop punishing normal movement",
-          score: 3,
-          signatureParts: [String(event.toolName ?? ""), String(event.reason ?? "")],
-          detail: String(event.reason ?? "tool policy block"),
-        }),
-      ];
+      signals.push(mk({
+        kind: "pain",
+        category: "tool-friction",
+        title: "tool policy is fighting normal work",
+        summary: `blocked ${String(event.toolName ?? "tool")} because ${String(event.reason ?? "unknown reason")}`,
+        recommendation: "tighten the allowlist only where it actually protects the project and stop punishing normal movement",
+        score: 3,
+        signatureParts: [String(event.toolName ?? ""), String(event.reason ?? "")],
+        detail: String(event.reason ?? "tool policy block"),
+      }));
+      break;
 
     case "tool_gating_block":
-      return [
-        mk({
+      signals.push(mk({
+        kind: "pain",
+        category: "tool-friction",
+        title: "tool gating is blocking useful work",
+        summary: `gating blocked ${String(event.toolName ?? "tool")}`,
+        recommendation: "keep the gate narrow and intentional so it does not become accidental bureaucracy",
+        score: 3,
+        signatureParts: [String(event.toolName ?? ""), String(event.reason ?? "")],
+        detail: String(event.reason ?? "tool gating block"),
+      }));
+      break;
+
+    case "tool_result": {
+      const toolName = String(event.toolName ?? "tool");
+      if (event.isError === true) {
+        sessionState.consecutiveErrors++;
+        signals.push(mk({
           kind: "pain",
           category: "tool-friction",
-          title: "tool gating is blocking useful work",
-          summary: `gating blocked ${String(event.toolName ?? "tool")}`,
-          recommendation: "keep the gate narrow and intentional so it does not become accidental bureaucracy",
-          score: 3,
-          signatureParts: [String(event.toolName ?? ""), String(event.reason ?? "")],
-          detail: String(event.reason ?? "tool gating block"),
-        }),
-      ];
+          title: `${toolName} is erroring`,
+          summary: `${toolName} returned an error`,
+          recommendation: "make the failure mode visible and stop asking the same broken tool path to magically recover",
+          score: 2,
+          signatureParts: [toolName, String(event.toolCallId ?? "")],
+          detail: `${toolName} error`,
+        }));
 
-    case "tool_result":
-      if (event.isError === true) {
-        return [
-          mk({
+        if (sessionState.consecutiveErrors >= 3) {
+          signals.push(mk({
             kind: "pain",
             category: "tool-friction",
-            title: `${String(event.toolName ?? "tool")} is erroring`,
-            summary: `${String(event.toolName ?? "tool")} returned an error`,
-            recommendation: "make the failure mode visible and stop asking the same broken tool path to magically recover",
-            score: 2,
-            signatureParts: [String(event.toolName ?? ""), String(event.toolCallId ?? "")],
-            detail: `${String(event.toolName ?? "tool")} error`,
-          }),
-        ];
+            title: "consecutive tool failures",
+            summary: `the agent has hit ${sessionState.consecutiveErrors} tool errors in a row`,
+            recommendation: "the agent might be stuck. consider clarifying the task or providing missing information",
+            score: sessionState.consecutiveErrors >= 5 ? 12 : 4,
+            signatureParts: [peerName, "consecutive_errors"],
+            detail: `${sessionState.consecutiveErrors} consecutive errors`,
+          }));
+        }
+      } else {
+        sessionState.consecutiveErrors = 0;
       }
-      return [];
-
-    default:
-      return [];
+      break;
+    }
   }
+
+  return signals;
 }
 
 function mergeSignals(seeds: WorkflowSignalSeed[], config: WorkflowMonitorConfig): WorkflowCandidateRecord[] {
@@ -602,6 +669,7 @@ export class WorkflowMonitor {
       lastReviewAt: null,
       lastProcessedAt: null,
       surfacedIds: {},
+      activeCandidates: {},
     });
     if (!this.state.lastProcessedAt) {
       const defaultSince = new Date(Date.now() - args.config.lookbackHours * 60 * 60 * 1000).toISOString();
@@ -626,8 +694,16 @@ export class WorkflowMonitor {
   async maybeReview(reason = "heartbeat"): Promise<WorkflowReviewRecord | null> {
     if (!this.args.config.enabled) return null;
     const lastReviewMs = this.state.lastReviewAt ? Date.parse(this.state.lastReviewAt) : 0;
+    
+    // Fast-path: session_start and turn_end always trigger a review if it's been at least 10 seconds.
+    // This ensures proactive interrupts between turns.
+    const isInteractive = reason === "session_start" || reason === "turn_end";
+    const interactiveMinGapMs = 10000;
+    const interactiveDue = isInteractive && (Date.now() - lastReviewMs >= interactiveMinGapMs);
+    
     const due = !lastReviewMs || Date.now() - lastReviewMs >= this.args.config.reviewCadenceMs;
-    if (!due && reason !== "session_start") return null;
+    
+    if (!due && !interactiveDue && reason !== "session_start") return null;
     return this.runReview(reason, false);
   }
 
@@ -755,15 +831,26 @@ export class WorkflowMonitor {
 
   private async performReview(reason: string, force: boolean): Promise<WorkflowReviewRecord | null> {
     const startedAt = new Date().toISOString();
-    const cutoff = this.state.lastProcessedAt ?? new Date(Date.now() - this.args.config.lookbackHours * 60 * 60 * 1000).toISOString();
+    const windowStart = new Date(Date.now() - this.args.config.lookbackHours * 60 * 60 * 1000).toISOString();
+    const effectiveCutoff = force ? windowStart : (this.state.lastProcessedAt ?? windowStart);
+
+    if (force) {
+      this.state.activeCandidates = {};
+    }
+
     const tracesRoot = resolve(this.args.runDir, "data", "traces");
     const files = walkJsonlFiles(tracesRoot);
     const signals: WorkflowSignalSeed[] = [];
+
+    const sessionStates = new Map<string, ReviewSessionState>();
 
     for (const filePath of files) {
       try {
         const stats = statSync(filePath);
         if (!force && this.state.lastProcessedAt && stats.mtime.toISOString() <= this.state.lastProcessedAt) {
+          continue;
+        }
+        if (stats.mtime.toISOString() <= windowStart) {
           continue;
         }
       } catch {
@@ -775,14 +862,58 @@ export class WorkflowMonitor {
       for (const record of records) {
         const ts = toIsoTimestamp(record.ts) ?? null;
         if (!ts) continue;
-        if (!force && ts <= cutoff) continue;
-        for (const signal of signalSeedFromEvent(record, source)) {
+        if (ts <= effectiveCutoff) continue;
+
+        const sid = record.sessionId ? String(record.sessionId) : source.sessionId ?? "unknown";
+        let sessionState = sessionStates.get(sid);
+        if (!sessionState) {
+          sessionState = { lastToolName: null, consecutiveErrors: 0 };
+          sessionStates.set(sid, sessionState);
+        }
+
+        for (const signal of signalSeedFromEvent(record, source, sessionState)) {
           signals.push(signal);
         }
       }
     }
 
-    const merged = mergeSignals(signals, this.args.config);
+    const newSignalsMerged = mergeSignals(signals, this.args.config);
+
+    for (const delta of newSignalsMerged) {
+      const existing = this.state.activeCandidates[delta.id];
+      if (!existing) {
+        this.state.activeCandidates[delta.id] = delta;
+        continue;
+      }
+
+      existing.score += delta.score;
+      existing.count += delta.count;
+      existing.lastSeen = delta.lastSeen > existing.lastSeen ? delta.lastSeen : existing.lastSeen;
+      existing.firstSeen = delta.firstSeen < existing.firstSeen ? delta.firstSeen : existing.firstSeen;
+      existing.evidence.push(...delta.evidence);
+      if (existing.evidence.length > 5) existing.evidence = existing.evidence.slice(-5);
+      
+      // Update status based on the new cumulative score
+      existing.status = existing.score >= this.args.config.interruptThreshold ? "interrupt" : existing.score >= this.args.config.winnerThreshold ? "winner" : existing.score >= this.args.config.candidateThreshold ? "candidate" : "parked";
+    }
+
+    // Decay/Cleanup: remove candidates that haven't been seen within the lookback window.
+    for (const [id, candidate] of Object.entries(this.state.activeCandidates)) {
+      if (candidate.lastSeen < windowStart) {
+        delete this.state.activeCandidates[id];
+      }
+    }
+
+    const merged = Object.values(this.state.activeCandidates).sort((a, b) => {
+      if (a.status !== b.status) {
+        const order: Record<WorkflowCandidateStatus, number> = { interrupt: 0, winner: 1, candidate: 2, parked: 3 };
+        return order[a.status] - order[b.status];
+      }
+      if (a.score !== b.score) return b.score - a.score;
+      if (a.count !== b.count) return b.count - a.count;
+      return b.lastSeen.localeCompare(a.lastSeen);
+    });
+
     const candidates = merged.filter((candidate) => candidate.score >= this.args.config.candidateThreshold);
     const winners = candidates.filter((candidate) => candidate.status === "winner");
     const parked = merged.filter((candidate) => candidate.score < this.args.config.candidateThreshold);
@@ -790,7 +921,7 @@ export class WorkflowMonitor {
       ts: startedAt,
       reason,
       projectTag: this.args.projectTag,
-      windowStart: cutoff,
+      windowStart: windowStart,
       windowEnd: startedAt,
       windowHours: this.args.config.lookbackHours,
       sourceCount: files.length,
@@ -815,30 +946,25 @@ export class WorkflowMonitor {
     writeJsonAtomic(this.latestPath(), review);
     writeJsonAtomic(this.reviewPath(startedAt), review);
 
+    const surfacedInterruptIds: string[] = [];
     const surfacedWinnerIds: string[] = [];
-    for (const winner of winners) {
-      const previous = this.state.surfacedIds[winner.id];
-      if (previous === "winner") continue;
-      surfacedWinnerIds.push(winner.id);
-      appendJsonl(this.candidateLogPath(), { ts: startedAt, reviewReason: reason, record: winner });
-    }
-
-    const interrupts = candidates.filter((c) => c.status === "interrupt");
-    for (const inter of interrupts) {
-      const previous = this.state.surfacedIds[inter.id];
-      if (previous === "interrupt") continue;
-      this.args.onInterrupt?.(inter);
-    }
 
     for (const candidate of candidates) {
-      if (candidate.status === "winner") continue;
       const previous = this.state.surfacedIds[candidate.id];
-      if (previous) continue;
-      appendJsonl(this.candidateLogPath(), { ts: startedAt, reviewReason: reason, record: candidate });
+      if (previous === candidate.status) continue;
+      
+      if (candidate.status === "interrupt") {
+        surfacedInterruptIds.push(candidate.id);
+        this.args.onInterrupt?.(candidate);
+        appendJsonl(this.candidateLogPath(), { ts: startedAt, reviewReason: reason, record: candidate });
+      } else if (candidate.status === "winner") {
+        surfacedWinnerIds.push(candidate.id);
+        appendJsonl(this.candidateLogPath(), { ts: startedAt, reviewReason: reason, record: candidate });
+      } else if (!previous && candidate.status === "candidate") {
+        appendJsonl(this.candidateLogPath(), { ts: startedAt, reviewReason: reason, record: candidate });
+      }
+
       this.state.surfacedIds[candidate.id] = candidate.status;
-    }
-    for (const id of surfacedWinnerIds) {
-      this.state.surfacedIds[id] = "winner";
     }
 
     this.state.lastReviewAt = startedAt;
