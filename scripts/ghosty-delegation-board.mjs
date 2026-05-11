@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty");
+const coordinatorSessionId = process.env.GHOSTY_COORDINATOR_SESSION_ID?.trim() || "";
 const jobsRoot = resolve(runDir, "data", "delegation-jobs");
 const sleepMs = 1500;
 
@@ -50,34 +51,21 @@ function labelForPhase(phase) {
   }
 }
 
-function phaseRank(phase) {
-  switch (phase) {
-    case "running": return 0;
-    case "launched": return 1;
-    case "reported": return 2;
-    case "missing_report": return 3;
-    case "exited": return 4;
-    default: return 5;
-  }
-}
-
 function collectJobs() {
   if (!existsSync(jobsRoot)) return [];
   return readdirSync(jobsRoot)
     .map((name) => resolve(jobsRoot, name, "job.json"))
     .map(readJson)
     .filter(Boolean)
-    .sort((a, b) => {
-      const phaseCmp = phaseRank(a.status?.phase) - phaseRank(b.status?.phase);
-      if (phaseCmp !== 0) return phaseCmp;
-      return Date.parse(b.launchedAt || "") - Date.parse(a.launchedAt || "");
-    });
+    .filter((job) => !coordinatorSessionId || job.coordinatorSessionId === coordinatorSessionId)
+    .sort((a, b) => Date.parse(a.launchedAt || "") - Date.parse(b.launchedAt || ""));
 }
 
 function renderBoard() {
   const jobs = collectJobs();
   const lines = [];
   lines.push("ghosty delegation board");
+  if (coordinatorSessionId) lines.push(`coordinator: ${coordinatorSessionId.slice(0, 8)}`);
   lines.push("");
 
   if (jobs.length === 0) {
@@ -85,7 +73,7 @@ function renderBoard() {
     return lines.join("\n");
   }
 
-  for (const job of jobs.slice(0, 12)) {
+  for (const job of jobs) {
     const phase = labelForPhase(job.status?.phase);
     const peer = String(job.peerName || "?").padEnd(10, " ");
     const shortJob = String(job.jobId || "").slice(0, 8);
@@ -103,19 +91,23 @@ function renderBoard() {
       tail += `  exit:${job.status?.exitStatus ?? "?"}`;
     }
 
+    const note = String(job.status?.note || "").trim();
+    if (note) tail += `  note:${note.slice(0, 80)}`;
     lines.push(`${phase.padEnd(8, " ")} ${peer} ${shortJob}  ${tail}`);
-    if (job.status?.note) {
-      lines.push(`          note: ${String(job.status.note).slice(0, 120)}`);
-    }
   }
 
   return lines.join("\n");
 }
 
 async function main() {
+  let lastRendered = "";
   while (true) {
-    process.stdout.write("\x1bc");
-    process.stdout.write(`${renderBoard()}\n`);
+    const rendered = `${renderBoard()}\n`;
+    if (rendered !== lastRendered) {
+      process.stdout.write("\x1bc");
+      process.stdout.write(rendered);
+      lastRendered = rendered;
+    }
     await new Promise((resolve) => setTimeout(resolve, sleepMs));
   }
 }

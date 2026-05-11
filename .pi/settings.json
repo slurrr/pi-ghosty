@@ -11,6 +11,7 @@
     "my-google-ai-studio/gemini-3-flash-preview",
     "vllm/omnicoder-9b",
     "vllm/gemma-4-e4b",
-    "vllm/qwen3.5_9b"
+    "vllm/qwen3.5_9b",
+    "vllm/gpt-oss-20b"
   ]
 }

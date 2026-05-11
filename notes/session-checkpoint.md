@@ -1,26 +1,28 @@
 # Current Goal
-- Refactor `delegate` to spawn actual independent Pi sessions via CLI instead of in-process sub-agents.
-- Enable true interactive background peers that show up in the tmux War Room.
-- Finalize `pi-ghosty` as a daily-driver agent harness for shipping income-generating products (e.g., crypto trade calculator).
+- Stabilize the interactive tmux War Room for `delegate` after the CLI-worker migration.
+- Verify a fresh coordinator session gets fresh worker sessions, automatic top-right worker windows, and a useful bottom-right status board.
 
 # Current State
-- **Architecture**: Extension-based, but currently uses in-process sub-agents via `session.prompt`.
-- **Visibility**: "War Room" layout exists but displays a "snapshot" of worker sessions rather than a live, interactive TUI.
-- **Routing**: Session-affinity logic discussed; goal is "One Coordinator = One Team" to prevent context drift.
-- **Grounding**: `bb-browser` stable on port 19825.
+- `delegate` now launches external worker `pi` sessions via CLI/job scripts instead of in-process `session.prompt`.
+- Automatic War Room works: coordinator stays left, top-right is a nested worker tmux session, bottom-right is `scripts/ghosty-delegation-board.mjs`.
+- Worker cycling now works in the nested worker pane via tmux session-local prefix `Ctrl-a`; outer tmux stays on `Ctrl-b`.
+- Status board is driven from `~/runs/pi-ghosty/data/delegation-jobs/*/job.json`, not WorkflowMonitor.
+- Status board now filters by `coordinatorSessionId`, sorts oldest→newest, keeps one line per job, and only redraws when content changes.
+- Current uncommitted files: `.pi/extensions/ghosty/index.ts`, `lib/delegation/tmuxOrchestrator.ts`, `scripts/ghosty-delegation-board.mjs`.
 
 # Decisions
-- **The "Ho Move"**: Pivot from in-process delegation to CLI-based delegation. Coordinator will `spawn` a `pi` CLI process.
-- **Tmux Integration**: Use `tmux split-window` within the delegation tool to launch the worker's TUI. This ensures workers are "actual sessions" and provides real-time visibility.
-- **Reliably Dumb Routing**: First-pass filter for session reuse will be the Coordinator's `sessionId` (affinity).
-- **Project Context**: Avoiding "Project-based" affinity for now to keep implementation "dead simple" and avoid over-engineering.
+- Keep the current status-line shape (`win:...`, headless PID note inline) because it is compact and useful for debugging.
+- Scope the status board to the current coordinator session only; do not collapse jobs.
+- Keep the worker viewport as a nested tmux session with per-worker windows rather than additional panes.
+- Remove WorkflowMonitor from War Room status; delegation job files are the source of truth for this UI.
 
 # Open Problems
-- **Interactivity**: Ensuring the spawned CLI TUI handles input/output correctly when launched via the coordinator's tool.
-- **Pane Management**: Determining how to handle/close tmux panes once a peer completes its `peer_report`.
-- **Workflow Monitor**: Needs hardening to ensure proactive "interrupt" power for long-running sessions.
+- Need live validation in a **fresh coordinator session** to confirm the status board is actually filtered correctly and no old jobs bleed through.
+- Need to confirm the board scroll behavior is acceptable now that rows are oldest→newest and redraws only happen on change.
+- Possible future cleanup: optional `/ghosty war-room` reset/focus command if tmux state drifts.
 
 # Resume Instructions
-1. Open `.pi/extensions/ghosty/index.ts` and locate the `delegate` tool execution logic.
-2. Refactor the `execute` call to use `spawn` to trigger the `pi` CLI with the `--session` flag instead of `session.prompt`.
-3. Test triggering a delegation and seeing if a live tmux pane pops up with the active worker TUI.
+1. Commit the current War Room/status-board changes.
+2. Start a **new coordinator session** and test delegating to multiple peers.
+3. Verify three things: (a) fresh worker sessions per new coordinator session, (b) top-right worker window cycling with `Ctrl-a n/p`, (c) bottom-right board only shows jobs from the new coordinator session.
+4. If filtering or scroll behavior is still off, inspect `scripts/ghosty-delegation-board.mjs` and the current session's `data/delegation-jobs/*/job.json` files first.

@@ -588,13 +588,17 @@ export default function (pi: any) {
       const replacement = (() => {
         if (role === "coordinator") {
           return (
-            "I want to have a collaborative 'co-thinking' session with you. " +
-            "For this session, please act as a supportive, insightful friend and thinking partner. " +
-            "Here is how I’d like us to interact: " +
+            "For this session, act as a supportive, insightful friend and thinking partner. " +
+            "DO: " +
             "Active Listening: Acknowledge my points before adding your own. " +
             "'Yes, And...': Instead of just giving a final answer, build on my ideas or offer a different perspective to keep the momentum going. " +
             "Ask Questions: Don’t just provide solutions—ask me clarifying questions that help me dig deeper into my own thinking. " +
-            "Tone: Keep it conversational, informal, and peer-to-peer."
+            "Tone: Keep it conversational, informal, and short. " +
+            "DON'T: " +
+            "Try to solve problems with one shot. " +
+            "Dump rax markdown, we are inside a TUI. " +
+            "Be formal or verbose. " +
+            "Give complete answers."
           );
         }
         if (role === "researcher") {
@@ -1905,7 +1909,7 @@ export default function (pi: any) {
           `GHOSTY_AGENT_CONFIG_PATH=${shellQuote(resolvedConfigPath)} ` +
           `pi --session ${shellQuote(sessionPath)} --session-dir ${shellQuote(peerSessionDir)} -e ${shellQuote(extPath)}`;
 
-        const statusCmd = `node ${shellQuote(delegationBoardScriptPath)}`;
+        const statusCmd = `GHOSTY_COORDINATOR_SESSION_ID=${shellQuote(String(ctx.sessionManager.getSessionId?.() ?? ""))} node ${shellQuote(delegationBoardScriptPath)}`;
 
         // Attempt "War Room" layout: Split vertically for peer, then split the new pane horizontally for delegation status.
         const res = spawnSync("tmux", ["split-window", "-h", "-p", "50", cmd], {
