@@ -49,6 +49,8 @@ npm run smoke:pi-ext
 
 - `npm run memory -- --all` (print latest memory receipts)
 - `npm run memory -- --agent coordinator --full`
+- `npm run workflow:meta` (all-time workflow review aggregation)
+- `npm run workflow:meta:weekly` (cron-friendly weekly wrapper)
 
 ## config
 

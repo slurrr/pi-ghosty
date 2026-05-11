@@ -45,7 +45,7 @@ export const memoryRecallSchema = z.object({
 });
 
 export const memoryRetainSchema = z.object({
-  context: z.string().default("pi-ghosty agent session transcript"),
+  context: z.string().default("full transcript"),
   async: z.boolean().default(true),
   timestampMode: memoryTimestampModeSchema.default("now"),
   updateMode: z.enum(["replace", "append"]).default("replace"),
@@ -76,16 +76,64 @@ export const memoryReflectSchema = z.object({
   budget: memoryBudgetSchema.default("low"),
 });
 
+const hindsightBankConfigSchema = z.object({
+  retainExtractionMode: z.enum(["concise", "verbose", "verbatim", "chunks", "custom"]).optional(),
+  retainMission: z.string().min(1).optional(),
+  observationsMission: z.string().min(1).optional(),
+  consolidationLlmBatchSize: z.number().int().positive().optional(),
+  consolidationMaxMemoriesPerRound: z.number().int().nonnegative().optional(),
+  consolidationSourceFactsMaxTokens: z.number().int().min(-1).optional(),
+  consolidationSourceFactsMaxTokensPerObservation: z.number().int().min(-1).optional(),
+  maxObservationsPerScope: z.number().int().min(-1).optional(),
+  reflectMission: z.string().min(1).optional(),
+  reflectSourceFactsMaxTokens: z.number().int().min(-1).optional(),
+  recallIncludeChunks: z.boolean().optional(),
+  recallMaxTokens: z.number().int().positive().optional(),
+  recallChunksMaxTokens: z.number().int().positive().optional(),
+  dispositionSkepticism: z.number().int().min(1).max(5).optional(),
+  dispositionLiteralism: z.number().int().min(1).max(5).optional(),
+  dispositionEmpathy: z.number().int().min(1).max(5).optional(),
+});
+
 export const memoryBankSchema = z.object({
   bankId: z.string().min(1),
+  recallTags: z.array(z.string().min(1)).default([]),
+  retainTags: z.array(z.string().min(1)).default([]),
+  observationScopes: z.array(z.array(z.string().min(1)).min(1)).default([]),
+  retainContent: z.enum(["conversation", "conversation_with_tools"]).default("conversation"),
+  hindsight: hindsightBankConfigSchema.optional(),
 });
 
 export const memoryBanksSchema = z.object({
-  procedural: memoryBankSchema.default({ bankId: "pi-ghosty-procedural" }),
-  personal: memoryBankSchema.default({ bankId: "pi-ghosty-personal" }),
+  procedural: memoryBankSchema.default({
+    bankId: "pi-ghosty-procedural",
+    recallTags: [],
+    retainTags: [],
+    observationScopes: [],
+    retainContent: "conversation",
+  }),
+  personal: memoryBankSchema.default({
+    bankId: "pi-ghosty-personal",
+    recallTags: [],
+    retainTags: [],
+    observationScopes: [],
+    retainContent: "conversation",
+  }),
 }).default({
-  procedural: { bankId: "pi-ghosty-procedural" },
-  personal: { bankId: "pi-ghosty-personal" },
+  procedural: {
+    bankId: "pi-ghosty-procedural",
+    recallTags: [],
+    retainTags: [],
+    observationScopes: [],
+    retainContent: "conversation",
+  },
+  personal: {
+    bankId: "pi-ghosty-personal",
+    recallTags: [],
+    retainTags: [],
+    observationScopes: [],
+    retainContent: "conversation",
+  },
 });
 
 export const memoryDefaultsSchema = z.object({
@@ -104,7 +152,7 @@ export const memoryDefaultsSchema = z.object({
     async: true,
   }),
   retain: memoryRetainSchema.default({
-    context: "pi-ghosty agent session transcript",
+    context: "full transcript",
     async: true,
     timestampMode: "now",
     updateMode: "replace",

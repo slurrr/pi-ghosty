@@ -22,14 +22,14 @@
         "maxFacts": 30,
         "queryMaxTokens": 420,
         "queryTimestampMode": "now",
-        "includeSourceFacts": true,
+        "includeSourceFacts": false,
         "includeSourceFactsMaxTokens": 4096,
-        "includeChunks": true,
+        "includeChunks": false,
         "includeChunksMaxTokens": 8192,
         "async": true
       },
       "retain": {
-        "context": "pi-ghosty agent session transcript",
+        "context": "full transcript",
         "async": true,
         "timestampMode": "now",
         "updateMode": "append",
@@ -50,14 +50,48 @@
       "reflect": {
         "enabled": false,
         "mode": "manual",
-        "budget": "low"
+        "budget": "mid"
       },
       "banks": {
         "procedural": {
-          "bankId": "pi-ghosty-procedural"
+          "bankId": "pi-ghosty-procedural",
+          "recallTags": [],
+          "retainTags": ["{projectTag}"],
+          "observationScopes": [["{projectTag}"]],
+          "retainContent": "conversation_with_tools",
+          "hindsight": {
+            "retainExtractionMode": "concise",
+            "retainMission": "Retain durable facts about projects, tasks, systems, architecture, tooling behavior, recurring workflow constraints, implementation decisions, and troubleshooting facts. Ignore greetings, filler, casual banter, and non-durable chatter.",
+            "observationsMission": "Observations are durable facts about the project and system: stable decisions, recurring workflow constraints, architecture choices, tooling behavior, and reusable operating knowledge. Ignore transient discussion and one-off conversational framing.",
+            "consolidationLlmBatchSize": 8,
+            "consolidationMaxMemoriesPerRound": 100,
+            "consolidationSourceFactsMaxTokens": -1,
+            "consolidationSourceFactsMaxTokensPerObservation": 256,
+            "maxObservationsPerScope": -1,
+            "recallIncludeChunks": false,
+            "recallMaxTokens": 2048,
+            "recallChunksMaxTokens": 1000
+          }
         },
         "personal": {
-          "bankId": "pi-ghosty-personal"
+          "bankId": "pi-ghosty-personal",
+          "recallTags": ["user:seth"],
+          "retainTags": ["user:seth"],
+          "observationScopes": [["user:seth"]],
+          "retainContent": "conversation",
+          "hindsight": {
+            "retainExtractionMode": "concise",
+            "retainMission": "Retain durable facts about Seth's preferences, recurring habits, stable interaction rules, long-lived workflow choices, and persistent constraints. Ignore project/task/system specifics, filler, greetings, emotional venting, and one-off chatter.",
+            "observationsMission": "Observations are durable facts about Seth: preferences, habits, recurring workflow choices, interaction rules, and stable constraints that remain useful across sessions. Ignore transient state and one-off conversational details.",
+            "consolidationLlmBatchSize": 8,
+            "consolidationMaxMemoriesPerRound": 100,
+            "consolidationSourceFactsMaxTokens": -1,
+            "consolidationSourceFactsMaxTokensPerObservation": 256,
+            "maxObservationsPerScope": -1,
+            "recallIncludeChunks": false,
+            "recallMaxTokens": 2048,
+            "recallChunksMaxTokens": 1000
+          }
         }
       }
     },
@@ -73,7 +107,7 @@
   },
   "agents": {
     "coordinator": {
-      "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch"],
+      "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch", "write", "edit", "bash"],
       "thinkingLevel": "medium",
       "defaultModel": "my-google-ai-studio/gemini-3-flash-preview"
     },

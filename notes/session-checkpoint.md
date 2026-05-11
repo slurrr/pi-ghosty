@@ -1,31 +1,26 @@
 # Current Goal
-- Finalize `pi-ghosty` as a daily-driver agent harness with reliable multi-peer routing and deep web grounding.
-- Transition to a specialized "Agent OS" architecture using cost-aware model allocation.
-- Harden the `WorkflowMonitor` logic and stabilize the multi-model hybrid engine.
+- Refactor `delegate` to spawn actual independent Pi sessions via CLI instead of in-process sub-agents.
+- Enable true interactive background peers that show up in the tmux War Room.
+- Finalize `pi-ghosty` as a daily-driver agent harness for shipping income-generating products (e.g., crypto trade calculator).
 
 # Current State
-- **Cost-Aware Configuration**: **LOCKED IN** in `pi-agent.json`.
-  - Coordinator: `gemini-3-flash-preview` (AI Studio - Plan-heavy).
-  - Coder: `gpt-5.3-codex` (OpenAI Plus Quota).
-  - Researcher/Reviewer: `gpt-5.4-mini` (OpenAI Plus Quota - Zero credit burn).
-  - Memory: `vllm/omnicoder-9b` (Local - Zero cost).
-- **Architecture Refactor**: **COMPLETED**. `src/` moved to `lib/`, legacy runtime removed.
-- **Visibility**: **COMPLETED**. "War Room" layout (Coordinator + Peer + Live Log) is the default for `/ghosty peer open`.
+- **Architecture**: Extension-based, but currently uses in-process sub-agents via `session.prompt`.
+- **Visibility**: "War Room" layout exists but displays a "snapshot" of worker sessions rather than a live, interactive TUI.
+- **Routing**: Session-affinity logic discussed; goal is "One Coordinator = One Team" to prevent context drift.
 - **Grounding**: `bb-browser` stable on port 19825.
-- **Thinking Models**: Verified. Thinking support for Gemini is handled via `~/.pi/agent/models.json` overrides.
-- **Workflow Monitor**: **HARDENED**. Stateful candidate tracking added; scores now accumulate correctly across turns.
 
 # Decisions
-- **Agent OS Strategy**: Use Fast Gemini for coordination, Codex for implementation, and OpenAI Mini/Local models for specialists to maximize subscription value and minimize credit burn.
-- **Threshold Awareness**: Gemini 1.5 Flash is identified as the "Worker Bee" for cost-efficient document scanning ($0.075/1M tokens under 128k context).
-- **Tracing**: `GHOSTY_SAMPLING_TRACE=1` is the toggle for real-time visibility into the "frozen" state of the LLM.
-- **Monitor State**: Persist `activeCandidates` in `state.json` to allow long-term loop detection.
+- **The "Ho Move"**: Pivot from in-process delegation to CLI-based delegation. Coordinator will `spawn` a `pi` CLI process.
+- **Tmux Integration**: Use `tmux split-window` within the delegation tool to launch the worker's TUI. This ensures workers are "actual sessions" and provides real-time visibility.
+- **Reliably Dumb Routing**: First-pass filter for session reuse will be the Coordinator's `sessionId` (affinity).
+- **Project Context**: Avoiding "Project-based" affinity for now to keep implementation "dead simple" and avoid over-engineering.
 
 # Open Problems
+- **Interactivity**: Ensuring the spawned CLI TUI handles input/output correctly when launched via the coordinator's tool.
+- **Pane Management**: Determining how to handle/close tmux panes once a peer completes its `peer_report`.
 - **Workflow Monitor**: Needs hardening to ensure proactive "interrupt" power for long-running sessions.
-- **Peer Specialization**: Need to implement the tool-surface partitioning (e.g., ensuring `bb-browser` is exclusive to a Pilot peer) as outlined in the roadmap.
 
 # Resume Instructions
-1. Review `docs/architecture/agent-os-peer-directory.md` for proposed new peers (Spec Writer, BB-Browser Pilot).
-2. Implement the `bb-browser-pilot` peer to centralize web acquisition quirks.
-3. Monitor Gemini credit burn vs. OpenAI Plus usage under the new `mini` model assignments.
+1. Open `.pi/extensions/ghosty/index.ts` and locate the `delegate` tool execution logic.
+2. Refactor the `execute` call to use `spawn` to trigger the `pi` CLI with the `--session` flag instead of `session.prompt`.
+3. Test triggering a delegation and seeing if a live tmux pane pops up with the active worker TUI.

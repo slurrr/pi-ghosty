@@ -16,34 +16,88 @@ import {
 } from "../memory/hindsight.js";
 import { JsonlTrace } from "../logging/jsonlTrace.js";
 
-function messagesToTranscript(messages: AgentMessage[]): string {
-  const lines: string[] = [];
-  for (const m of messages) {
-    if (m.role === "user" && typeof m.content === "string") {
-      lines.push(`User: ${m.content}`);
-    } else if (m.role === "assistant") {
-      const content = (m as any).content;
-      if (typeof content === "string") {
-        lines.push(`Assistant: ${content}`);
-      } else if (Array.isArray(content)) {
-        const textBlocks = content
-          .filter((b: any) => b.type === "text" && typeof b.text === "string")
-          .map((b: any) => b.text)
-          .join("");
-        if (textBlocks.trim()) lines.push(`Assistant: ${textBlocks}`);
-      }
-    } else if (m.role === "toolResult") {
-      const content = (m as any).content;
-      if (Array.isArray(content)) {
-        const text = content
-          .filter((b: any) => b.type === "text" && typeof b.text === "string")
-          .map((b: any) => b.text)
-          .join("");
-        if (text.trim()) lines.push(`ToolResult(${(m as any).toolName ?? "tool"}): ${text}`);
-      }
+type RetainContentMode = "conversation" | "conversation_with_tools";
+
+type MemoryBankRole = "procedural" | "personal";
+
+type RetainTranscriptEntry = {
+  role: string;
+  content: string;
+  timestamp?: string;
+};
+
+type BankAppendState = {
+  entryCount: number;
+  fullTranscriptSha1: string;
+  updatedAt: string;
+  documentId: string;
+};
+
+type AppendStateFile = Partial<Record<MemoryBankRole, BankAppendState>>;
+
+function extractTextContent(content: unknown): string {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((block: any) => block?.type === "text" && typeof block?.text === "string")
+    .map((block: any) => block.text)
+    .join("")
+    .trim();
+}
+
+function buildRetainTranscript(messages: AgentMessage[], mode: RetainContentMode): RetainTranscriptEntry[] {
+  const entries: RetainTranscriptEntry[] = [];
+
+  for (const message of messages) {
+    const m = message as any;
+    const role = String(m.role ?? "");
+    const timestamp = toIsoTimestamp(m.timestamp);
+
+    if (role === "user" || role === "assistant") {
+      const text = extractTextContent(m.content);
+      if (!text) continue;
+      entries.push({
+        role,
+        content: text,
+        ...(timestamp ? { timestamp } : {}),
+      });
+      continue;
+    }
+
+    if (mode !== "conversation_with_tools") continue;
+
+    if (role === "toolCall") {
+      const toolName = String(m.toolName ?? "tool").trim();
+      const args = m.args ?? m.arguments ?? m.toolArgs ?? null;
+      const argsText = args == null ? "" : typeof args === "string" ? args : JSON.stringify(args);
+      const content = argsText.trim() ? `${toolName}: ${argsText}` : toolName;
+      if (!content.trim()) continue;
+      entries.push({
+        role: "tool_call",
+        content,
+        ...(timestamp ? { timestamp } : {}),
+      });
+      continue;
+    }
+
+    if (role === "toolResult") {
+      const toolName = String(m.toolName ?? "tool").trim();
+      const text = extractTextContent(m.content);
+      if (!text) continue;
+      entries.push({
+        role: "tool_result",
+        content: `${toolName}: ${text}`,
+        ...(timestamp ? { timestamp } : {}),
+      });
     }
   }
-  return lines.join("\n");
+
+  return entries;
+}
+
+function serializeRetainTranscript(messages: AgentMessage[], mode: RetainContentMode): string {
+  const entries = buildRetainTranscript(messages, mode);
+  return entries.length > 0 ? JSON.stringify(entries) : "";
 }
 
 function estimateTextTokens(text: string): number {
@@ -133,6 +187,10 @@ function memoryReceiptSessionDir(runDir: string, agentName: string, sessionId: s
   return resolve(memoryReceiptRoot(runDir), agentName, sessionId);
 }
 
+function appendStatePath(runDir: string, agentName: string, sessionId: string): string {
+  return resolve(memoryReceiptSessionDir(runDir, agentName, sessionId), "append-state.json");
+}
+
 function listDirs(path: string): string[] {
   try {
     return readdirSync(path, { withFileTypes: true })
@@ -173,6 +231,20 @@ function writeText(filePath: string, content: string): void {
   writeFileSync(filePath, content.endsWith("\n") ? content : content + "\n", "utf8");
 }
 
+function readAppendState(runDir: string, agentName: string, sessionId: string): AppendStateFile {
+  try {
+    const raw = readFileSync(appendStatePath(runDir, agentName, sessionId), "utf8");
+    const parsed = raw.trim() ? JSON.parse(raw) : {};
+    return typeof parsed === "object" && parsed ? parsed as AppendStateFile : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeAppendState(runDir: string, agentName: string, sessionId: string, state: AppendStateFile): void {
+  writeJson(appendStatePath(runDir, agentName, sessionId), state);
+}
+
 function updateMemoryIndex(runDir: string, agentNames: string[]): void {
   try {
     const blocks: string[] = [];
@@ -205,6 +277,116 @@ function updateMemoryIndex(runDir: string, agentNames: string[]): void {
   }
 }
 
+function renderTagTemplate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{(projectTag|agentName|sessionId)\}/g, (_, key) => vars[key] ?? "");
+}
+
+function resolveConfiguredTags(templates: string[] | undefined, vars: Record<string, string>, fallback: string[]): string[] {
+  if (Array.isArray(templates)) {
+    const rendered = templates.map((value) => renderTagTemplate(value, vars).trim()).filter(Boolean);
+    return Array.from(new Set(rendered));
+  }
+  return Array.from(new Set(fallback));
+}
+
+function resolveConfiguredScopes(
+  scopes: string[][] | undefined,
+  vars: Record<string, string>,
+  fallback: string[][],
+): string[][] {
+  const resolved = Array.isArray(scopes)
+    ? scopes
+        .map((scope) => scope.map((value) => renderTagTemplate(value, vars).trim()).filter(Boolean))
+        .filter((scope) => scope.length > 0)
+    : [];
+
+  const source = resolved.length > 0 ? resolved : fallback;
+  const seen = new Set<string>();
+  const unique: string[][] = [];
+  for (const scope of source) {
+    const key = scope.join("\u0000");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(scope);
+  }
+  return unique;
+}
+
+function dedupeMemoryLines(lines: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const line of lines) {
+    const normalized = line.replace(/\s+/g, " ").trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    unique.push(line);
+  }
+  return unique;
+}
+
+function appendPayloadForBank(
+  entries: RetainTranscriptEntry[],
+  state: BankAppendState | undefined,
+): {
+  payloadEntries: RetainTranscriptEntry[];
+  payloadMode: "delta" | "full";
+  appendReady: boolean;
+  appendReason: string;
+  fullTranscriptSha1: string;
+} {
+  const fullTranscriptJson = JSON.stringify(entries);
+  const fullTranscriptSha1 = sha1(fullTranscriptJson);
+
+  if (!state) {
+    return {
+      payloadEntries: entries,
+      payloadMode: "full",
+      appendReady: false,
+      appendReason: "missing_append_state",
+      fullTranscriptSha1,
+    };
+  }
+
+  if (entries.length < state.entryCount) {
+    return {
+      payloadEntries: entries,
+      payloadMode: "full",
+      appendReady: false,
+      appendReason: "entry_count_regressed",
+      fullTranscriptSha1,
+    };
+  }
+
+  const prefixSha1 = sha1(JSON.stringify(entries.slice(0, state.entryCount)));
+  if (prefixSha1 !== state.fullTranscriptSha1) {
+    return {
+      payloadEntries: entries,
+      payloadMode: "full",
+      appendReady: false,
+      appendReason: "prefix_mismatch",
+      fullTranscriptSha1,
+    };
+  }
+
+  const deltaEntries = entries.slice(state.entryCount);
+  return {
+    payloadEntries: deltaEntries,
+    payloadMode: "delta",
+    appendReady: true,
+    appendReason: deltaEntries.length > 0 ? "delta_ready" : "no_new_entries",
+    fullTranscriptSha1,
+  };
+}
+
+type ResolvedMemoryBank = {
+  role: MemoryBankRole;
+  bankId: string;
+  recallTags: string[];
+  retainTags: string[];
+  observationScopes: string[][];
+  retainContent: RetainContentMode;
+};
+
 type MemoryEnv = {
   HINDSIGHT_BASE_URL?: string;
   PROJECT_TAG?: string;
@@ -236,13 +418,41 @@ export function memoryExtensionFactory(
     bankId: proceduralBankId,
   });
 
-  const baseTags = [projectTag, `agent:${agentName}`, `session:${sessionId}`];
-  const recallTags = [projectTag, `agent:${agentName}`];
-  const observationScopes = [
+  const tagTemplateVars = { projectTag, agentName, sessionId };
+  const legacyRetainTags = [projectTag, `agent:${agentName}`, `session:${sessionId}`];
+  const legacyRecallTags = [projectTag, `agent:${agentName}`];
+  const legacyObservationScopes = [
     ...(retainCfg.observationScopes.includeProjectScope ? [[projectTag]] : []),
     ...(retainCfg.observationScopes.includeAgentScope ? [[`agent:${agentName}`]] : []),
     ...(retainCfg.observationScopes.includeSessionScope ? [[`session:${sessionId}`]] : []),
   ];
+
+  const resolvedBanks: Record<MemoryBankRole, ResolvedMemoryBank> = {
+    procedural: {
+      role: "procedural",
+      bankId: proceduralBankId,
+      recallTags: resolveConfiguredTags(memoryDefaults.banks?.procedural?.recallTags, tagTemplateVars, legacyRecallTags),
+      retainTags: resolveConfiguredTags(memoryDefaults.banks?.procedural?.retainTags, tagTemplateVars, legacyRetainTags),
+      observationScopes: resolveConfiguredScopes(
+        memoryDefaults.banks?.procedural?.observationScopes,
+        tagTemplateVars,
+        legacyObservationScopes,
+      ),
+      retainContent: memoryDefaults.banks?.procedural?.retainContent ?? "conversation",
+    },
+    personal: {
+      role: "personal",
+      bankId: personalBankId,
+      recallTags: resolveConfiguredTags(memoryDefaults.banks?.personal?.recallTags, tagTemplateVars, legacyRecallTags),
+      retainTags: resolveConfiguredTags(memoryDefaults.banks?.personal?.retainTags, tagTemplateVars, legacyRetainTags),
+      observationScopes: resolveConfiguredScopes(
+        memoryDefaults.banks?.personal?.observationScopes,
+        tagTemplateVars,
+        legacyObservationScopes,
+      ),
+      retainContent: memoryDefaults.banks?.personal?.retainContent ?? "conversation",
+    },
+  };
   const trace = JsonlTrace.forAgent(paths.runDir, agentName, sessionId);
   let cachedServerCapabilities:
     | { version?: string; supportsItemUpdateMode: boolean }
@@ -269,6 +479,7 @@ export function memoryExtensionFactory(
     const knownAgents = ["coordinator", "coder", "researcher", "reviewer", "memory"];
 
     pi.on("before_agent_start", async (event) => {
+      const eventMessages = Array.isArray((event as any)?.messages) ? (event as any).messages : [];
       const rawQuery = String(event.prompt ?? "");
       const queryCharsCapped = recallCfg.queryMaxChars && recallCfg.queryMaxChars > 0
         ? rawQuery.slice(0, recallCfg.queryMaxChars)
@@ -278,7 +489,6 @@ export function memoryExtensionFactory(
       const shaped = truncateToEstimatedTokens(queryCharsCapped, recallCfg.queryMaxTokens);
       const query = shaped.text;
 
-      const eventMessages = Array.isArray((event as any)?.messages) ? (event as any).messages : [];
       const queryTimestamp = (() => {
         if (recallCfg.queryTimestampMode === "custom") return recallCfg.queryTimestampValue;
         if (recallCfg.queryTimestampMode === "message") return pickMessageTimestamp(eventMessages, "last");
@@ -286,14 +496,11 @@ export function memoryExtensionFactory(
         return new Date().toISOString();
       })();
 
-      const recallTargets = hasSplitBanks
+      const recallTargets: ResolvedMemoryBank[] = hasSplitBanks
         ? agentName === "coordinator"
-          ? [
-              { role: "personal", bankId: personalBankId },
-              { role: "procedural", bankId: proceduralBankId },
-            ]
-          : [{ role: "procedural", bankId: proceduralBankId }]
-        : [{ role: "procedural", bankId: proceduralBankId }];
+          ? [resolvedBanks.personal, resolvedBanks.procedural]
+          : [resolvedBanks.procedural]
+        : [resolvedBanks.procedural];
 
       const t0 = performance.now();
       const allLines: string[] = [];
@@ -308,7 +515,7 @@ export function memoryExtensionFactory(
             const recalled = await hindsight.recall(target.bankId, query, {
               maxTokens: recallCfg.maxTokens,
               budget: recallCfg.budget,
-              tags: recallTags,
+              tags: target.recallTags,
               tagsMatch: recallCfg.tagsMatch,
               types: recallCfg.types,
               queryTimestamp,
@@ -322,10 +529,12 @@ export function memoryExtensionFactory(
             recallPayloads[target.role] = recalled;
             const facts: any[] = (recalled as any)?.facts ?? (recalled as any)?.results ?? [];
             const memoryLines = Array.isArray(facts)
-              ? facts
-                  .slice(0, recallCfg.maxFacts)
-                  .map((f) => (typeof f.text === "string" ? f.text.trim() : null))
-                  .filter((x): x is string => !!x)
+              ? dedupeMemoryLines(
+                  facts
+                    .slice(0, recallCfg.maxFacts)
+                    .map((f) => (typeof f.text === "string" ? f.text.trim() : null))
+                    .filter((x): x is string => !!x),
+                )
               : [];
 
             totalFactsCount += Array.isArray(facts) ? facts.length : 0;
@@ -405,12 +614,11 @@ export function memoryExtensionFactory(
           agentName,
           sessionId,
           projectTag,
-          bankIds: recallTargets.map((t) => ({ role: t.role, bankId: t.bankId })),
+          bankIds: recallTargets.map((t) => ({ role: t.role, bankId: t.bankId, recallTags: t.recallTags })),
           recallMs: lastRecallMs,
           factsCount: totalFactsCount,
           injectedLines,
           injectedChars,
-          recallTags,
           queryTimestamp: queryTimestamp ?? null,
           recallErrors,
         });
@@ -456,12 +664,23 @@ export function memoryExtensionFactory(
     });
 
     pi.on("agent_end", async (event) => {
-      const transcript = messagesToTranscript(event.messages);
-      if (!transcript.trim()) return;
-
-      const transcriptSha1 = sha1(transcript);
-      const documentId = `${projectTag}/${agentName}/${sessionId}`;
       const eventMessages = Array.isArray((event as any)?.messages) ? (event as any).messages : [];
+      if (eventMessages.length === 0) return;
+
+      const transcriptEntriesByBank: Record<MemoryBankRole, RetainTranscriptEntry[]> = {
+        procedural: buildRetainTranscript(eventMessages as AgentMessage[], resolvedBanks.procedural.retainContent),
+        personal: buildRetainTranscript(eventMessages as AgentMessage[], resolvedBanks.personal.retainContent),
+      };
+
+      const fullContentByBank: Record<MemoryBankRole, string> = {
+        procedural: JSON.stringify(transcriptEntriesByBank.procedural),
+        personal: JSON.stringify(transcriptEntriesByBank.personal),
+      };
+
+      const documentIds: Record<MemoryBankRole, string> = {
+        procedural: `${projectTag}/${agentName}/${sessionId}/procedural`,
+        personal: `${projectTag}/${agentName}/${sessionId}/personal`,
+      };
       const retainTimestamp = (() => {
         if (retainCfg.timestampMode === "none") return "unset";
         if (retainCfg.timestampMode === "message") return pickMessageTimestamp(eventMessages, "last") ?? new Date().toISOString();
@@ -469,26 +688,12 @@ export function memoryExtensionFactory(
         return new Date().toISOString();
       })();
 
-      const item: RetainMemoryItem = {
-        content: transcript,
-        timestamp: retainTimestamp,
-        document_id: documentId,
-        context: retainCfg.context,
-        tags: baseTags,
-        observation_scopes:
-          retainCfg.observationScopes.mode === "custom" && observationScopes.length > 0
-            ? observationScopes
-            : undefined,
-      };
-
-      const retainTargets = hasSplitBanks
+      const retainTargets: ResolvedMemoryBank[] = hasSplitBanks
         ? agentName === "coordinator"
-          ? [
-              { role: "procedural", bankId: proceduralBankId },
-              { role: "personal", bankId: personalBankId },
-            ]
-          : [{ role: "procedural", bankId: proceduralBankId }]
-        : [{ role: "procedural", bankId: proceduralBankId }];
+          ? [resolvedBanks.procedural, resolvedBanks.personal]
+          : [resolvedBanks.procedural]
+        : [resolvedBanks.procedural];
+      const appendState = readAppendState(paths.runDir, agentName, sessionId);
 
       for (const target of retainTargets) {
         const t0 = performance.now();
@@ -505,15 +710,60 @@ export function memoryExtensionFactory(
           }
         }
         const supportsItemUpdateMode = Boolean(cachedServerCapabilities?.supportsItemUpdateMode);
-        const effectiveUpdateMode = supportsItemUpdateMode ? requestedUpdateMode : "replace";
         const requestUrl = bankMemoriesUrl(baseUrl, target.bankId);
         const requestHeaders = { "content-type": "application/json" };
+        const transcriptEntries = transcriptEntriesByBank[target.role];
+        const fullContent = fullContentByBank[target.role];
+        const documentId = documentIds[target.role];
+
+        if (!fullContent.trim() || fullContent === "[]") continue;
+
+        const appendPlan = appendPayloadForBank(transcriptEntries, appendState[target.role]);
+        const actualUpdateMode = supportsItemUpdateMode && requestedUpdateMode === "append" && appendPlan.appendReady
+          ? "append"
+          : "replace";
+        const payloadEntries = actualUpdateMode === "append" ? appendPlan.payloadEntries : transcriptEntries;
+        const contentToRetain = JSON.stringify(payloadEntries);
+        const effectiveUpdateMode = actualUpdateMode;
+        const payloadMode: "delta" | "full" = actualUpdateMode === "append" ? "delta" : "full";
+        const payloadReason = actualUpdateMode === "append"
+          ? appendPlan.appendReason
+          : supportsItemUpdateMode
+            ? requestedUpdateMode === "append"
+              ? appendPlan.appendReason
+              : "requested_replace"
+            : "server_no_update_mode_support";
+
+        if (!contentToRetain.trim() || contentToRetain === "[]") {
+          if (actualUpdateMode === "append" && appendPlan.appendReason === "no_new_entries") {
+            await trace.append({
+              type: "memory_retain_skipped_no_delta",
+              projectTag,
+              bankId: target.bankId,
+              bankRole: target.role,
+              agentName,
+              sessionId,
+              documentId,
+              requestedUpdateMode,
+              payloadReason,
+              fullTranscriptEntries: transcriptEntries.length,
+            });
+          }
+          continue;
+        }
+
         const requestItem: RetainMemoryItem = {
-          ...item,
-          ...(supportsItemUpdateMode && requestedUpdateMode !== "replace" ? { update_mode: requestedUpdateMode } : {}),
+          content: contentToRetain,
+          timestamp: retainTimestamp,
+          document_id: documentId,
+          context: retainCfg.context,
+          tags: target.retainTags,
+          observation_scopes: target.observationScopes.length > 0 ? target.observationScopes : undefined,
+          ...(supportsItemUpdateMode ? { update_mode: actualUpdateMode } : {}),
         };
         const requestBody = {
           items: [requestItem],
+          async: retainCfg.async,
         };
         const requestBodyJson = JSON.stringify(requestBody);
 
@@ -537,7 +787,7 @@ export function memoryExtensionFactory(
               requestedUpdateMode,
               effectiveUpdateMode,
               serverVersion: cachedServerCapabilities?.version ?? null,
-              reason: "current hindsight openapi does not advertise MemoryItem.update_mode",
+              reason: payloadReason,
               serverCapabilityError,
             });
           }
@@ -560,9 +810,15 @@ export function memoryExtensionFactory(
             sessionId,
             ms: Math.round(t1 - t0),
             documentId,
-            transcriptChars: transcript.length,
-            transcriptSha1,
-            tags: baseTags,
+            transcriptChars: contentToRetain.length,
+            transcriptSha1: sha1(contentToRetain),
+            fullTranscriptChars: fullContent.length,
+            fullTranscriptSha1: appendPlan.fullTranscriptSha1,
+            fullTranscriptEntries: transcriptEntries.length,
+            payloadEntries: payloadEntries.length,
+            payloadMode,
+            payloadReason,
+            tags: target.retainTags,
             retainTransport,
             requestedUpdateMode,
             effectiveUpdateMode,
@@ -589,7 +845,7 @@ export function memoryExtensionFactory(
                 agentName,
                 sessionId,
                 projectTag,
-                bankIds: retainTargets.map((t) => ({ role: t.role, bankId: t.bankId })),
+                bankIds: retainTargets.map((t) => ({ role: t.role, bankId: t.bankId, retainTags: t.retainTags })),
                 note: "retain-only fallback",
               });
               return dir;
@@ -605,9 +861,18 @@ export function memoryExtensionFactory(
               configuredAsync: retainCfg.async,
               requestedUpdateMode,
               effectiveUpdateMode,
-              transcriptChars: transcript.length,
-              transcriptSha1,
+              transcriptChars: contentToRetain.length,
+              transcriptSha1: sha1(contentToRetain),
+              fullTranscriptChars: fullContent.length,
+              fullTranscriptSha1: appendPlan.fullTranscriptSha1,
+              fullTranscriptEntries: transcriptEntries.length,
+              payloadEntries: payloadEntries.length,
+              payloadMode,
+              payloadReason,
               documentId,
+              retainTags: target.retainTags,
+              observationScopes: target.observationScopes,
+              retainContent: target.retainContent,
               bankConfigError,
               bankConfigSnapshot,
               serverCapabilityError,
@@ -623,13 +888,22 @@ export function memoryExtensionFactory(
             lines.push(`bankId: ${target.bankId}`);
             lines.push(`documentId: ${documentId}`);
             lines.push(`timestamp: ${retainTimestamp}`);
+            lines.push(`retainTags: ${target.retainTags.join(", ") || "(none)"}`);
+            lines.push(`observationScopes: ${JSON.stringify(target.observationScopes)}`);
+            lines.push(`retainContent: ${target.retainContent}`);
             lines.push(`requestedUpdateMode: ${requestedUpdateMode}`);
             lines.push(`effectiveUpdateMode: ${effectiveUpdateMode}`);
+            lines.push(`payloadMode: ${payloadMode}`);
+            lines.push(`payloadReason: ${payloadReason}`);
             lines.push(`configuredAsync: ${String(retainCfg.async)}`);
             lines.push(`transport: ${retainTransport}`);
             lines.push(`operationIds: ${operationIds.length ? operationIds.join(", ") : "(none)"}`);
-            lines.push(`transcriptChars: ${transcript.length}`);
-            lines.push(`transcriptSha1: ${transcriptSha1}`);
+            lines.push(`transcriptChars: ${contentToRetain.length}`);
+            lines.push(`transcriptSha1: ${sha1(contentToRetain)}`);
+            lines.push(`fullTranscriptChars: ${fullContent.length}`);
+            lines.push(`fullTranscriptSha1: ${appendPlan.fullTranscriptSha1}`);
+            lines.push(`fullTranscriptEntries: ${transcriptEntries.length}`);
+            lines.push(`payloadEntries: ${payloadEntries.length}`);
             lines.push(`observationsEnabled: ${String(bankConfigSnapshot?.config?.enable_observations ?? "?")}`);
             lines.push(`retainExtractionMode: ${String(bankConfigSnapshot?.config?.retain_extraction_mode ?? "?")}`);
             lines.push(`serverVersion: ${String(cachedServerCapabilities?.version ?? "?")}`);
@@ -673,8 +947,17 @@ export function memoryExtensionFactory(
                 effectiveUpdateMode,
                 configuredAsync: retainCfg.async,
                 transport: retainTransport,
-                transcriptChars: transcript.length,
-                transcriptSha1,
+                transcriptChars: contentToRetain.length,
+                transcriptSha1: sha1(contentToRetain),
+                fullTranscriptChars: fullContent.length,
+                fullTranscriptSha1: appendPlan.fullTranscriptSha1,
+                fullTranscriptEntries: transcriptEntries.length,
+                payloadEntries: payloadEntries.length,
+                payloadMode,
+                payloadReason,
+                retainTags: target.retainTags,
+                observationScopes: target.observationScopes,
+                retainContent: target.retainContent,
                 observationsEnabled: bankConfigSnapshot?.config?.enable_observations ?? null,
                 retainExtractionMode: bankConfigSnapshot?.config?.retain_extraction_mode ?? null,
                 serverVersion: cachedServerCapabilities?.version ?? null,
@@ -685,6 +968,14 @@ export function memoryExtensionFactory(
             } catch {
               // ignore
             }
+
+            appendState[target.role] = {
+              entryCount: transcriptEntries.length,
+              fullTranscriptSha1: appendPlan.fullTranscriptSha1,
+              updatedAt: new Date().toISOString(),
+              documentId,
+            };
+            writeAppendState(paths.runDir, agentName, sessionId, appendState);
           } catch {
             // best effort
           }
@@ -755,7 +1046,7 @@ export function memoryExtensionFactory(
             sessionId,
             ms: Math.round(t1 - t0),
             documentId,
-            transcriptChars: transcript.length,
+            transcriptChars: contentToRetain.length,
             error,
           });
 
@@ -768,7 +1059,7 @@ export function memoryExtensionFactory(
                 bankId: target.bankId,
                 error,
                 isConnectionError,
-                transcriptSha1,
+                transcriptSha1: sha1(contentToRetain),
                 requestedUpdateMode,
                 effectiveUpdateMode,
                 requestUrl,
