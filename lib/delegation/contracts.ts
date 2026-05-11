@@ -48,6 +48,12 @@ export interface DelegationLaunch {
   delegationMessage: string;
   routing?: PeerResult["routing"];
   launchedAt: string;
+  launcher?: "tmux" | "headless";
+  windowName?: string;
+  windowId?: string;
+  paneId?: string;
+  taskPath?: string;
+  jobPath?: string;
 }
 
 export interface DelegationReport extends DelegationLaunch {

@@ -35,6 +35,13 @@ export interface CatalogEntry {
     provider: string;
     id: string;
   };
+  tmux?: {
+    windowName?: string;
+    windowId?: string;
+    paneId?: string;
+    mode?: "new-window" | "reuse-window";
+    lastLaunchedAt?: string;
+  };
 
   semantic: {
     title: string;
