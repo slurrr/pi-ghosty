@@ -62,8 +62,8 @@ The config must support all of these simultaneously:
    - frontier models must coexist in the same orchestrator
    - frontier models should not receive local-only request shaping
 3. Support hybrid operation.
-   - frontier coordinator must still be able to delegate to local peers
-   - local coordinator must still be able to delegate to frontier peers
+   - frontier corroborator must still be able to delegate to local peers
+   - local corroborator must still be able to delegate to frontier peers
 4. Keep Pi `enabledModels` as the canonical availability/scope mechanism.
 5. Allow easy role defaults and model overrides.
    - per-agent preferred model
@@ -133,7 +133,7 @@ A file-level split such as:
 
 breaks hybrid orchestration because:
 
-- coordinator model/provider and peer model/provider are independent concerns
+- corroborator model/provider and peer model/provider are independent concerns
 - one session may need both frontier and local models in the same delegation tree
 - request shaping needs to follow the actual model used, not the config filename
 
@@ -154,7 +154,7 @@ The current agent config shape is good and should stay conceptually intact:
 ```json
 {
   "agents": {
-    "coordinator": {
+    "corroborator": {
       "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch"],
       "thinkingLevel": "off",
       "defaultModel": "openai-codex/gpt-5.3-codex"
@@ -208,7 +208,7 @@ Example:
     },
     {
       "when": {
-        "agent": ["coordinator"],
+        "agent": ["corroborator"],
         "model": ["vllm/*"]
       },
       "apply": {
@@ -337,7 +337,7 @@ A likely target shape looks like this:
     }
   },
   "agents": {
-    "coordinator": {
+    "corroborator": {
       "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch"],
       "thinkingLevel": "off",
       "defaultModel": "openai-codex/gpt-5.3-codex"
@@ -381,7 +381,7 @@ A likely target shape looks like this:
     },
     {
       "when": {
-        "agent": ["coordinator"],
+        "agent": ["corroborator"],
         "model": ["vllm/*"]
       },
       "apply": {

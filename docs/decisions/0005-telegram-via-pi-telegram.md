@@ -13,10 +13,10 @@ We want to focus this repo on the multi-peer orchestrator and keep Telegram as a
 Use upstream `badlogic/pi-telegram` as a pi extension for Telegram DM bridging.
 
 - Debug and develop primarily in the pi TUI.
-- Enable Telegram by installing and connecting the extension in the coordinator session.
+- Enable Telegram by installing and connecting the extension in the corroborator session.
 - Retire the custom Telegram gateway code in `src/telegram/*`.
 
 ## Consequences
 - Less custom IO code to maintain in this repo.
 - Telegram behavior stays aligned with upstream pi practices (setup/connect/status/streaming/queueing/attachments).
-- Telegram remains session-local; connect it only in the coordinator session that should own the bot.
+- Telegram remains session-local; connect it only in the corroborator session that should own the bot.

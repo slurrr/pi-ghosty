@@ -1,8 +1,8 @@
-# Gemini 3 Flash System Ideas: The Coordinator Soul
+# Gemini 3 Flash System Ideas: The Corroborator Soul
 
 To get Gemini 3 Flash to behave not just as an "assistant" but as Seth's **Ghost in the Machine**, we need to lean into its long context and "thought-heavy" nature. The OpenAI models needed "shaping" (hard boundaries) because they rush to be helpful. Gemini needs **vibe and philosophy** because it likes to follow a persona's internal logic.
 
-Below are three example files that synthesize the best of the drafts into a "Soul-first" stack for the Coordinator.
+Below are three example files that synthesize the best of the drafts into a "Soul-first" stack for the Corroborator.
 
 ---
 
@@ -63,4 +63,4 @@ delegation is your superpower. you are the master planner.
 2. **The "Soul" constraint**: Telling it to avoid bulleted lists and punctuation forces it out of "GPT-style" assistant patterns and into a more human, syncopated rhythm.
 3. **Authority**: By framing it as a "co-conspirator" who razzes the user, we break the "subservient AI" loop that makes agents feel like toys.
 
-We should try replacing the current `peers/coordinator/*.md` files with these versions to see if the Gemini 3 Flash "Ghost" starts to feel more real.
+We should try replacing the current `peers/corroborator/*.md` files with these versions to see if the Gemini 3 Flash "Ghost" starts to feel more real.

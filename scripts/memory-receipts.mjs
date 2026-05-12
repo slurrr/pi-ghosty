@@ -29,13 +29,13 @@ function usage() {
     "ghosty memory receipts",
     "",
     "usage:",
-    "  npm run -s memory -- --agent coordinator --last 5",
+    "  npm run -s memory -- --agent corroborator --last 5",
     "  npm run -s memory -- --all",
     "  npm run -s memory -- --agent coder --full",
     "",
     "flags:",
     "  --runDir <path>     (default: $GHOSTY_PI_RUN_DIR or ~/runs/pi-ghosty)",
-    "  --agent <name>      (coordinator|coder|researcher|reviewer|memory)",
+    "  --agent <name>      (corroborator|coder|researcher|reviewer|memory)",
     "  --all               show latest per agent",
     "  --last <n>          show last n receipts (default 1)",
     "  --full              include full injected block when available",
@@ -159,7 +159,7 @@ function main() {
     return;
   }
 
-  const agent = String(args.agent || "coordinator");
+  const agent = String(args.agent || "corroborator");
   const agentDir = resolve(root, agent);
   const sessionDir = mostRecentSessionDir(agentDir);
   if (!sessionDir) {

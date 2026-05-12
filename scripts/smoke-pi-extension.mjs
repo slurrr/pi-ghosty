@@ -7,7 +7,7 @@ import { basename, resolve } from "node:path";
 
 const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty");
 const extPath = resolve(process.cwd(), ".pi", "extensions", "ghosty", "index.ts");
-const defaultSessionDir = resolve(runDir, "data", "sessions-smoke", "coordinator");
+const defaultSessionDir = resolve(runDir, "data", "sessions-smoke", "corroborator");
 const sessionDir = process.env.GHOSTY_PI_SMOKE_SESSION_DIR?.trim() || defaultSessionDir;
 const envConfigPath = process.env.GHOSTY_AGENT_CONFIG_PATH?.trim();
 const fallbackConfigPath = resolve(process.cwd(), "pi-agent.json");
@@ -146,6 +146,6 @@ if (!timedOut && (!out.includes("ghosty smoke:") || !out.includes("smoke test ok
 }
 
 const statusLine = timedOut
-  ? `ok: coordinator stayed active past timeout, but delegation report completed successfully`
+  ? `ok: corroborator stayed active past timeout, but delegation report completed successfully`
   : `ok: ${out}`;
 process.stdout.write(`${statusLine}\nreport: ${candidateName}\n`);

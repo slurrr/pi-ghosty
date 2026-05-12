@@ -459,7 +459,7 @@ Reason:
 
 Reflect should be introduced through explicit paths such as:
 
-- a coordinator tool/command to ask Hindsight for a reasoned memory answer
+- a corroborator tool/command to ask Hindsight for a reasoned memory answer
 - a background or pre-turn synthesis step for selected situations
 - a debugging/evaluation command to compare recall vs reflect output
 
@@ -592,7 +592,7 @@ Seed the initial narrow mental model set for both banks and validate:
 
 ## Open Questions
 
-1. Should Ghosty introduce one coordinator-facing reflect command first, or wire reflect into an internal pre-planning path immediately?
+1. Should Ghosty introduce one corroborator-facing reflect command first, or wire reflect into an internal pre-planning path immediately?
 
 2. Which personal mental model should be seeded first:
    - user working style
@@ -600,6 +600,6 @@ Seed the initial narrow mental model set for both banks and validate:
    - user personal context
    if we want the smallest useful rollout?
 
-3. Should procedural reflect default to the broad `domain:software` surface first, with project-specific reflect only when explicitly requested, or should coordinator flows query both by default?
+3. Should procedural reflect default to the broad `domain:software` surface first, with project-specific reflect only when explicitly requested, or should corroborator flows query both by default?
 
 4. When `includeChunks` is enabled in recall for normal flows, does that reduce the need for some reflect calls, or do the two remain distinct enough in practice that both are still needed?

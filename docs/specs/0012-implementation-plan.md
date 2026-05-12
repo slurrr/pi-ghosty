@@ -4,7 +4,7 @@
 Implement `docs/specs/0012-agent-os-interactive-cli-delegation.md` by evolving Ghosty from in-process delegated peer prompting toward externally launched, interactive worker sessions managed through `pi` CLI + `tmux`.
 
 The target shape is:
-- coordinator stays active in the main session
+- corroborator stays active in the main session
 - worker peers launch as real interactive `pi` sessions in tmux panes/windows
 - worker sessions persist after completion
 - completion handoff remains durable and filesystem-backed via `peer_report`
@@ -31,7 +31,7 @@ In scope:
 - replace in-process worker execution with CLI-launched worker sessions
 - define tmux orchestration behavior for launch/reuse/visibility
 - preserve durable `peer_report` handoff via filesystem
-- keep coordinator non-blocking
+- keep corroborator non-blocking
 - preserve existing session-affinity catalog approach where practical
 - update smoke/test coverage for the new execution mode
 
@@ -50,25 +50,25 @@ Out of scope:
 
 ## Architecture Delta
 ### Before
-Coordinator delegation path:
+Corroborator delegation path:
 1. build delegation envelope
 2. route or create peer session
 3. create peer session services in-process
 4. call `session.prompt(...)`
 5. capture `peer_report`
 6. write durable report file
-7. inject completion back into coordinator
+7. inject completion back into corroborator
 
 ### After
-Coordinator delegation path:
+Corroborator delegation path:
 1. build delegation envelope
 2. route or create peer session identity
 3. create a durable delegation launch record
 4. spawn a `pi` CLI worker in tmux tied to that peer session
-5. return immediately to coordinator
+5. return immediately to corroborator
 6. worker runs independently and calls `peer_report`
 7. extension detects completion via durable report / lifecycle handoff
-8. inject completion back into coordinator
+8. inject completion back into corroborator
 
 ## Proposed Modules / Change Surfaces
 ### Primary files
@@ -142,7 +142,7 @@ Tasks:
    - build delegation prompt
    - create immediate `DelegationLaunch`
 2. Move command-construction concerns into a helper (`tmuxOrchestrator` and/or `workerLaunch`).
-3. Keep current report-writing and coordinator injection logic intact during this phase.
+3. Keep current report-writing and corroborator injection logic intact during this phase.
 
 Deliverable:
 - extension code where launch prep returns a serializable launch object usable by either in-process or CLI execution
@@ -184,7 +184,7 @@ Deliverable:
 - a functioning CLI launch path behind a feature flag or directly replacing current worker execution
 
 Acceptance:
-- coordinator gets immediate launch result
+- corroborator gets immediate launch result
 - worker opens as a real `pi` session
 - worker sees the full delegation envelope
 
@@ -195,7 +195,7 @@ Goal: formalize war-room behavior.
 
 Tasks:
 1. Normalize tmux layout behavior:
-   - coordinator remains in main pane/window
+   - corroborator remains in main pane/window
    - workers open in a dedicated visual area
    - use deterministic `tmux` window names such as `<peerName>:<shortJobId>` or `<peerName>`
 2. Decide reuse rules:
@@ -214,7 +214,7 @@ Suggested tmux responsibilities:
 Acceptance:
 - launched workers are visible and inspectable
 - successful workers remain open after reporting
-- failures surface clearly without blocking the coordinator session
+- failures surface clearly without blocking the corroborator session
 
 ---
 
@@ -231,7 +231,7 @@ Tasks:
 4. On successful report pickup:
    - validate payload
    - mark job settled
-   - inject a follow-up message into the coordinator session
+   - inject a follow-up message into the corroborator session
 5. On missing `peer_report`:
    - implement fallback policy consistent with `docs/decisions/0004-peer-report-retry.md`
    - likely via process-exit handling + minimal recovery prompt or failure report record
@@ -241,7 +241,7 @@ Important note:
 
 Acceptance:
 - worker completion no longer depends on in-process callback wiring
-- completed reports still appear as distinct coordinator follow-ups
+- completed reports still appear as distinct corroborator follow-ups
 - durable report files remain the source of truth
 
 ---
@@ -264,11 +264,11 @@ Tasks:
 3. Integrate with existing loop/guard behavior where useful:
    - `lib/extensions/loopBreakerExtension.ts`
 4. Define stale-job behavior:
-   - notify coordinator after threshold
+   - notify corroborator after threshold
    - recommend manual intervention / window inspection
 
 Acceptance:
-- coordinator can distinguish healthy background work from stuck work
+- corroborator can distinguish healthy background work from stuck work
 - missing-report cases are visible and actionable
 
 ---
@@ -281,7 +281,7 @@ Tasks:
 2. Add focused checks for:
    - immediate launch return
    - report file creation by `jobId`
-   - coordinator follow-up injection
+   - corroborator follow-up injection
    - tmux fallback behavior when no tmux session exists
 3. Update docs:
    - `docs/specs/0012-agent-os-interactive-cli-delegation.md` if implementation details crystallize
@@ -320,9 +320,9 @@ Keep the first implementation PR small enough to review:
 This de-risks the migration before fully deleting the old in-process path.
 
 ## Open Questions Resolved
-1. **Prompt seeding:** The coordinator will generate a temporary, hidden delegation task file. The worker `pi` CLI will be invoked to read this file as its first action. This ensures the worker has the full context (vision, files, tasks) without user-facing "hello" fluff or massive CLI arguments.
-2. **Session identity vs tmux window identity:** A peer session identity maps to a persistent tmux window. If a session is resumed, the coordinator focuses/reuses that window. If a new session is created, a new window is spawned.
-3. **Completion trigger:** The coordinator will primarily monitor for the creation of the durable `peer_report` file via a filesystem-backed signal or process exit. This ensures the result is injected back into the coordinator session immediately upon completion.
+1. **Prompt seeding:** The corroborator will generate a temporary, hidden delegation task file. The worker `pi` CLI will be invoked to read this file as its first action. This ensures the worker has the full context (vision, files, tasks) without user-facing "hello" fluff or massive CLI arguments.
+2. **Session identity vs tmux window identity:** A peer session identity maps to a persistent tmux window. If a session is resumed, the corroborator focuses/reuses that window. If a new session is created, a new window is spawned.
+3. **Completion trigger:** The corroborator will primarily monitor for the creation of the durable `peer_report` file via a filesystem-backed signal or process exit. This ensures the result is injected back into the corroborator session immediately upon completion.
 4. **Missing `peer_report`:** Handled manually during the stabilization phase. Since Seth is watching the War Room, he can steer the agent to call the tool or manually intervene if a session ends without a report.
 5. **Batch concurrency:** The existing semaphore (maxParallelDelegations) remains in place to prevent terminal/mental "visual noise" and manage system load.
 
@@ -342,9 +342,9 @@ npm run typecheck
 ## Acceptance Criteria
 This implementation plan is complete when the repo can support all of the following:
 - `delegate` launches a real worker `pi` session in tmux rather than prompting a hidden in-process peer
-- coordinator remains responsive immediately after launch
+- corroborator remains responsive immediately after launch
 - worker sessions remain visible after completion
 - worker completion produces durable `peer_report` files keyed by `jobId`
-- coordinator receives a follow-up injection based on the durable report
+- corroborator receives a follow-up injection based on the durable report
 - session affinity remains simple and predictable
 - typecheck and smoke validation pass under the updated model

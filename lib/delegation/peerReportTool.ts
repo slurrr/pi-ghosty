@@ -6,7 +6,7 @@ export function createPeerReportTool(onReport?: (output: PeerOutput) => Promise<
   return defineTool({
     name: "peer_report",
     label: "Peer Report",
-    description: "Report a structured peer result to the coordinator runtime.",
+    description: "Report a structured peer result to the corroborator runtime.",
     parameters: Type.Object({
       summary: Type.String({ minLength: 1 }),
       findings: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
@@ -18,7 +18,7 @@ export function createPeerReportTool(onReport?: (output: PeerOutput) => Promise<
       try {
         await onReport?.(output);
       } catch {
-        // The peer report is durable even if the coordinator notification fails.
+        // The peer report is durable even if the corroborator notification fails.
       }
       return {
         content: [{ type: "text", text: "ok" }],

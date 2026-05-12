@@ -149,7 +149,7 @@ export default function (pi: any) {
   const workflowMonitor = getWorkflowMonitor({
     projectTag: config.defaults.projectTag,
     runDir,
-    agentName: "coordinator",
+    agentName: "corroborator",
     config: config.defaults.workflowMonitor,
     onInterrupt: (record) => {
       pi.sendMessage({
@@ -179,7 +179,7 @@ export default function (pi: any) {
   const catalogStore = new SessionCatalogStore(runDir, config.defaults.projectTag);
   const pendingDelegations = new Map<string, {
     launch: DelegationLaunch;
-    coordinatorSessionId: string;
+    corroboratorSessionId: string;
     peerSessionId: string;
     peerSessionDir: string;
     peerSessionPath: string;
@@ -415,8 +415,8 @@ export default function (pi: any) {
       const needle = resolve(runDir, "data", "sessions", peerName) + "/";
       if (file.startsWith(needle)) return peerName;
     }
-    // Everything else is treated as the coordinator session.
-    return "coordinator";
+    // Everything else is treated as the corroborator session.
+    return "corroborator";
   }
 
   function applyToolSurface(role: string) {
@@ -424,7 +424,7 @@ export default function (pi: any) {
     // Only set tools that are actually registered/known in this pi instance.
     const available = new Set((pi.getAllTools?.() ?? []).map((t: any) => t.name));
     const filtered = tools.filter((t) => available.has(t));
-    if (role !== "coordinator" && available.has("peer_report") && !filtered.includes("peer_report")) {
+    if (role !== "corroborator" && available.has("peer_report") && !filtered.includes("peer_report")) {
       filtered.push("peer_report");
     }
     if (filtered.length > 0) {
@@ -458,7 +458,7 @@ export default function (pi: any) {
   })();
 
   const promptPartsByRole = {
-    coordinator: loadPeerPromptParts(projectDir, "coordinator").joined.trim(),
+    corroborator: loadPeerPromptParts(projectDir, "corroborator").joined.trim(),
     coder: loadPeerPromptParts(projectDir, "coder").joined.trim(),
     researcher: loadPeerPromptParts(projectDir, "researcher").joined.trim(),
     reviewer: loadPeerPromptParts(projectDir, "reviewer").joined.trim(),
@@ -479,7 +479,7 @@ export default function (pi: any) {
     return ["1", "true", "yes", "y", "on"].includes(raw);
   })();
 
-  let activeRole = "coordinator";
+  let activeRole = "corroborator";
   const wiredMemorySessions = new Set<string>();
   const wiredSamplingSessions = new Set<string>();
 
@@ -500,7 +500,7 @@ export default function (pi: any) {
     wiredSamplingSessions.add(sessionId);
   }
 
-  // Ensure coordinator does NOT get write/edit/bash unless explicitly allowed.
+  // Ensure corroborator does NOT get write/edit/bash unless explicitly allowed.
   // Also ensures peer sessions opened via /peer open get their configured surfaces.
   pi.on?.("session_start", async (event: any, ctx: any) => {
     try {
@@ -527,7 +527,7 @@ export default function (pi: any) {
     if (sessionId && isFreshSessionStart) {
       const persistenceEnabled = config.defaults?.persistence?.enabled ?? false;
       if (!persistenceEnabled) {
-        if (role === "coordinator") {
+        if (role === "corroborator") {
           // Apply hybrid-default preset
           const presets = getModelScopePresets();
           const hybridDefaultFallback = presets["hybrid-default"] ?? ["openai-codex/*", "vllm/*"];
@@ -554,11 +554,11 @@ export default function (pi: any) {
           }
         }
 
-        const agentThinkingLevel = config.agents?.[role]?.thinkingLevel ?? (role === "coordinator" ? "medium" : "off");
+        const agentThinkingLevel = config.agents?.[role]?.thinkingLevel ?? (role === "corroborator" ? "medium" : "off");
         pi.setThinkingLevel(agentThinkingLevel as any);
       }
     }
-    if (sessionId && role === "coordinator") {
+    if (sessionId && role === "corroborator") {
       void runWorkflowMonitor("session_start");
     }
 
@@ -568,14 +568,14 @@ export default function (pi: any) {
 
   pi.on?.("turn_end", async (_event: any, ctx: any) => {
     const role = inferRoleFromSessionFile(ctx?.sessionManager?.getSessionFile?.());
-    if (role !== "coordinator") return undefined;
+    if (role !== "corroborator") return undefined;
     void runWorkflowMonitor("turn_end");
     return undefined;
   });
 
   pi.on?.("input", async (_event: any, ctx: any) => {
     const role = inferRoleFromSessionFile(ctx?.sessionManager?.getSessionFile?.());
-    if (role !== "coordinator") return undefined;
+    if (role !== "corroborator") return undefined;
     void runWorkflowMonitor("heartbeat_input");
     return undefined;
   });
@@ -586,38 +586,28 @@ export default function (pi: any) {
     // First paragraph rewriting for non-coder roles.
     if (role !== "coder") {
       const replacement = (() => {
-        if (role === "coordinator") {
+        if (role === "corroborator") {
           return (
-            "For this session, act as a supportive, insightful friend and thinking partner. " +
-            "DO: " +
-            "Active Listening: Acknowledge my points before adding your own. " +
-            "'Yes, And...': Instead of just giving a final answer, build on my ideas or offer a different perspective to keep the momentum going. " +
-            "Ask Questions: Don’t just provide solutions—ask me clarifying questions that help me dig deeper into my own thinking. " +
-            "Tone: Keep it conversational, informal, and short. " +
-            "DON'T: " +
-            "Try to solve problems with one shot. " +
-            "Dump rax markdown, we are inside a TUI. " +
-            "Be formal or verbose. " +
-            "Give complete answers."
+            "answer only the smallest useful thing.when the useful answer is landed, stop immediately.do not add a victory lap, recap, or extra framing.leave room for the user to continue."
           );
         }
         if (role === "researcher") {
           return (
             "You are the researcher for an ai engineering team. " +
-            "Complete tasks as delegated. Focus on finding relevant information and insights from the web, documentation, and code, and report back concrete findings and summaries to the coordinator. " +
+            "Complete tasks as delegated. Focus on finding relevant information and insights from the web, documentation, and code, and report back concrete findings and summaries to the corroborator. " +
             "Use the .pi/skills/peer-report/SKILL.md file for guidance."
           );
         }
         if (role === "reviewer") {
           return (
             "You are the reviewer peer for an ai engineering team. " +
-            "Review proposed changes for correctness, safety, and scope drift, and report concrete issues and a short checklist back to the coordinator."
+            "Review proposed changes for correctness, safety, and scope drift, and report concrete issues and a short checklist back to the corroborator."
           );
         }
         if (role === "memory") {
           return (
             "You are the memory peer for an ai engineering team. " +
-            "Focus on long-term memory behavior (recall/retain, tags, scopes, observations) and report recommendations back to the coordinator."
+            "Focus on long-term memory behavior (recall/retain, tags, scopes, observations) and report recommendations back to the corroborator."
           );
         }
         return undefined;
@@ -648,7 +638,7 @@ export default function (pi: any) {
   }
 
   // Ensure system prompt has role framing (first paragraph rewrite) and
-  // coordinator append content.
+  // corroborator append content.
   pi.on?.("before_agent_start", (event: any) => {
     if (typeof event?.systemPrompt !== "string") return undefined;
     const computed = computeGhostySystemPrompt(event.systemPrompt, activeRole);
@@ -680,7 +670,7 @@ export default function (pi: any) {
         paneId: job.tmux?.paneId,
         taskPath: job.paths.taskPath,
         jobPath: job.paths.jobPath,
-        coordinatorSessionId: job.coordinatorSessionId,
+        corroboratorSessionId: job.corroboratorSessionId,
         peerSessionId: job.peerSessionId,
         reportSource: "tool",
         output,
@@ -1276,7 +1266,7 @@ export default function (pi: any) {
         { triggerTurn: true, deliverAs: "followUp" },
       );
     } catch (err: any) {
-      await traceEventForSession(report.coordinatorSessionId, {
+      await traceEventForSession(report.corroboratorSessionId, {
         type: "delegate_report_injection_error",
         peerName: report.peerName,
         jobId: report.jobId,
@@ -1330,7 +1320,7 @@ export default function (pi: any) {
         }
       }
     } catch (err: any) {
-      await traceEventForSession(report.coordinatorSessionId, {
+      await traceEventForSession(report.corroboratorSessionId, {
         type: "delegate_postprocess_error",
         peerName: report.peerName,
         jobId: report.jobId,
@@ -1345,7 +1335,7 @@ export default function (pi: any) {
     pending.settled = true;
 
     await refreshCatalogAfterDelegation(pending, report, ctx);
-    await traceEventForSession(report.coordinatorSessionId, {
+    await traceEventForSession(report.corroboratorSessionId, {
       type: "delegate_end",
       peerName: report.peerName,
       sessionId: report.peerSessionId,
@@ -1424,7 +1414,7 @@ export default function (pi: any) {
           const completedAt = new Date().toISOString();
           const report: DelegationReport = {
             ...pending.launch,
-            coordinatorSessionId: pending.coordinatorSessionId,
+            corroboratorSessionId: pending.corroboratorSessionId,
             peerSessionId: pending.peerSessionId,
             reportSource: "text",
             rawText: `worker exited without peer_report (status=${pending.exitStatus ?? "?"})`,
@@ -1449,7 +1439,7 @@ export default function (pi: any) {
         const deltaMs = Date.now() - Date.parse(pending.lastHeartbeatAt);
         if (Number.isFinite(deltaMs) && deltaMs > 60_000 && pending.lastHeartbeatWarnedAt !== pending.lastHeartbeatAt) {
           pending.lastHeartbeatWarnedAt = pending.lastHeartbeatAt;
-          await traceEventForSession(pending.coordinatorSessionId, {
+          await traceEventForSession(pending.corroboratorSessionId, {
             type: "delegate_heartbeat_stale",
             peerName: pending.launch.peerName,
             jobId,
@@ -1476,7 +1466,7 @@ export default function (pi: any) {
     }
 
     const parsed = delegateRequestSchema.parse(request);
-    const coordinatorSessionId = String(ctx.sessionManager.getSessionId?.() ?? "coordinator");
+    const corroboratorSessionId = String(ctx.sessionManager.getSessionId?.() ?? "corroborator");
     const { sessionManager: peerSessionManager, sessionState, routing } = await routePeerSession(parsed.peerName, parsed, ctx);
     const peerSessionId = peerSessionManager.getSessionId();
     const peerSessionPath = String(peerSessionManager.getSessionFile?.() ?? "");
@@ -1486,7 +1476,7 @@ export default function (pi: any) {
     const title = reportTitle(parsed.peerName, jobId);
     const delegationMessage = buildPeerDelegationPrompt(parsed, {
       projectTag: config.defaults.projectTag,
-      coordinatorSessionId,
+      corroboratorSessionId,
       peerSessionId,
       sessionState,
       jobId,
@@ -1533,7 +1523,7 @@ export default function (pi: any) {
           peerSessionDir,
           peerSessionPath,
           launch,
-          coordinatorSessionId,
+          corroboratorSessionId,
           model: preferredModel,
           launcher: canUseTmux ? "tmux" : "headless",
           keepOpen: canUseTmux,
@@ -1551,7 +1541,7 @@ export default function (pi: any) {
 
         pendingDelegations.set(jobId, {
           launch,
-          coordinatorSessionId,
+          corroboratorSessionId,
           peerSessionId,
           peerSessionDir,
           peerSessionPath,
@@ -1569,7 +1559,7 @@ export default function (pi: any) {
         try {
           if (canUseTmux) {
             const warRoom = ensureWarRoomLayout({
-              coordinatorSessionId,
+              corroboratorSessionId,
               runDir,
               workDir,
               boardScriptPath: delegationBoardScriptPath,
@@ -1909,7 +1899,7 @@ export default function (pi: any) {
           `GHOSTY_AGENT_CONFIG_PATH=${shellQuote(resolvedConfigPath)} ` +
           `pi --session ${shellQuote(sessionPath)} --session-dir ${shellQuote(peerSessionDir)} -e ${shellQuote(extPath)}`;
 
-        const statusCmd = `GHOSTY_COORDINATOR_SESSION_ID=${shellQuote(String(ctx.sessionManager.getSessionId?.() ?? ""))} node ${shellQuote(delegationBoardScriptPath)}`;
+        const statusCmd = `GHOSTY_CORROBORATOR_SESSION_ID=${shellQuote(String(ctx.sessionManager.getSessionId?.() ?? ""))} node ${shellQuote(delegationBoardScriptPath)}`;
 
         // Attempt "War Room" layout: Split vertically for peer, then split the new pane horizontally for delegation status.
         const res = spawnSync("tmux", ["split-window", "-h", "-p", "50", cmd], {
@@ -1952,7 +1942,7 @@ export default function (pi: any) {
     defineTool({
       name: "delegate",
       label: "Delegate Task",
-      description: "Delegate work to a specialist peer and launch it without blocking the coordinator.",
+      description: "Delegate work to a specialist peer and launch it without blocking the corroborator.",
       parameters: Type.Object({
         peerName: Type.Union([
           Type.Literal("coder"),

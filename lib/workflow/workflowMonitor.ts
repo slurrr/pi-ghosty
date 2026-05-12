@@ -323,7 +323,7 @@ function signalSeedFromEvent(
         category: "handoff-integrity",
         title: "peer handoffs are being dropped after completion",
         summary: error ? `post-processing failed: ${error}` : "a peer finished but the handoff cleanup failed",
-        recommendation: "keep the report/write/follow-up path atomic so a finished peer job always reaches the coordinator",
+        recommendation: "keep the report/write/follow-up path atomic so a finished peer job always reaches the corroborator",
         score: 5,
         signatureParts: [peerName, error],
         detail: error ?? "delegate postprocess error",
@@ -347,8 +347,8 @@ function signalSeedFromEvent(
       signals.push(mk({
         kind: "pain",
         category: "handoff-integrity",
-        title: "peer results are not reaching the coordinator",
-        summary: error ? `report injection failed: ${error}` : "a peer result could not be injected back into the coordinator session",
+        title: "peer results are not reaching the corroborator",
+        summary: error ? `report injection failed: ${error}` : "a peer result could not be injected back into the corroborator session",
         recommendation: "keep a durable return path even when the interactive injection layer is having a bad day",
         score: 6,
         signatureParts: [peerName, error],
@@ -1003,7 +1003,7 @@ export class WorkflowMonitor {
 }
 
 export function workflowMonitorExtensionFactory(args: WorkflowMonitorArgs): ExtensionFactory {
-  if (args.agentName !== "coordinator") {
+  if (args.agentName !== "corroborator") {
     return () => undefined;
   }
 

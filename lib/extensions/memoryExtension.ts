@@ -476,7 +476,7 @@ export function memoryExtensionFactory(
       recallMs: number;
     } | null = null;
 
-    const knownAgents = ["coordinator", "coder", "researcher", "reviewer", "memory"];
+    const knownAgents = ["corroborator", "coder", "researcher", "reviewer", "memory"];
 
     pi.on("before_agent_start", async (event) => {
       const eventMessages = Array.isArray((event as any)?.messages) ? (event as any).messages : [];
@@ -497,7 +497,7 @@ export function memoryExtensionFactory(
       })();
 
       const recallTargets: ResolvedMemoryBank[] = hasSplitBanks
-        ? agentName === "coordinator"
+        ? agentName === "corroborator"
           ? [resolvedBanks.personal, resolvedBanks.procedural]
           : [resolvedBanks.procedural]
         : [resolvedBanks.procedural];
@@ -689,7 +689,7 @@ export function memoryExtensionFactory(
       })();
 
       const retainTargets: ResolvedMemoryBank[] = hasSplitBanks
-        ? agentName === "coordinator"
+        ? agentName === "corroborator"
           ? [resolvedBanks.procedural, resolvedBanks.personal]
           : [resolvedBanks.procedural]
         : [resolvedBanks.procedural];

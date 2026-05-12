@@ -27,7 +27,7 @@ That works for a simple setup, but it mixes two different kinds of long-term mem
 The desired behavior is:
 
 - keep those concerns in **separate banks**
-- let the **coordinator** recall from both banks
+- let the **corroborator** recall from both banks
 - let **working peers** recall only the procedural bank
 - keep working peer prompts cleaner and more task-focused
 - allow distinct retain/observation missions per bank
@@ -59,19 +59,19 @@ The system must support two conceptual banks:
 
 - **procedural bank**
   - default work memory
-  - injected into coordinator and all working peers
+  - injected into corroborator and all working peers
   - stores task and repo context
   - should remain the primary source for day-to-day delegation and implementation work
 
 - **personal bank**
   - durable user/preferences memory
-  - injected into coordinator only
+  - injected into corroborator only
   - stores preferences, stable decisions, and long-lived user context
   - should stay out of working peer prompts
 
-### 2) Coordinator sees both banks
+### 2) Corroborator sees both banks
 
-The coordinator session must be able to recall from both banks.
+The corroborator session must be able to recall from both banks.
 
 Required order:
 
@@ -81,8 +81,8 @@ Required order:
 Reasoning:
 
 - workflow and preference shaping should come first, because bad workflow can make procedural facts less useful
-- personal preferences should bias the coordinator before work-memory facts are considered
-- procedural context still matters, but it should be interpreted through the coordinator’s preference/workflow frame
+- personal preferences should bias the corroborator before work-memory facts are considered
+- procedural context still matters, but it should be interpreted through the corroborator’s preference/workflow frame
 
 ### 3) Working peers see procedural only
 
@@ -138,8 +138,8 @@ Example shape:
       "banks": {
         "procedural": {
           "bankId": "pi-ghosty-procedural",
-          "injectInto": ["coordinator", "coder", "researcher", "reviewer", "memory"],
-          "retainFrom": ["coordinator", "coder", "researcher", "reviewer", "memory"],
+          "injectInto": ["corroborator", "coder", "researcher", "reviewer", "memory"],
+          "retainFrom": ["corroborator", "coder", "researcher", "reviewer", "memory"],
           "retainMission": "Capture procedural knowledge, task progress, repo facts, implementation decisions, and troubleshooting context.",
           "observationScopes": {
             "includeProjectScope": true,
@@ -149,8 +149,8 @@ Example shape:
         },
         "personal": {
           "bankId": "pi-ghosty-personal",
-          "injectInto": ["coordinator"],
-          "retainFrom": ["coordinator", "memory"],
+          "injectInto": ["corroborator"],
+          "retainFrom": ["corroborator", "memory"],
           "retainMission": "Capture user preferences, stable habits, recurring constraints, and durable decisions.",
           "observationScopes": {
             "includeProjectScope": false,
@@ -184,7 +184,7 @@ On `before_agent_start`:
 Recommended merge order:
 
 - procedural first
-- personal second for coordinator
+- personal second for corroborator
 
 Recommended formatting:
 
@@ -198,9 +198,9 @@ On `agent_end`:
 
 - write to the procedural bank for all agents, so work memory stays current
 - write to the personal bank only when the role/policy allows it
-  - default recommendation: coordinator + memory peer only
+  - default recommendation: corroborator + memory peer only
 
-This keeps personal memory from being polluted by every peer transcript while still allowing the coordinator to capture durable user context.
+This keeps personal memory from being polluted by every peer transcript while still allowing the corroborator to capture durable user context.
 
 ### Observation scopes
 
@@ -247,12 +247,12 @@ Likely files to change:
 - replace the single-bank assumption with explicit procedural + personal bank config
 - create brand-new banks with explicit ids
 - define both bank ids and their role policies directly
-- keep the procedural bank as the primary work bank and the personal bank as the coordinator preference bank
+- keep the procedural bank as the primary work bank and the personal bank as the corroborator preference bank
 - if needed, synthesize durable facts from the current bank into the new banks as a separate migration step
 
 ### Phase 2: role-based injection split
 
-- coordinator recalls procedural + personal
+- corroborator recalls procedural + personal
 - working peers recall procedural only
 - memory receipts and traces record which bank(s) were used
 
@@ -269,7 +269,7 @@ Likely files to change:
 
 ## Acceptance criteria
 
-- Coordinator sessions recall from both banks when split-bank mode is enabled.
+- Corroborator sessions recall from both banks when split-bank mode is enabled.
 - Working peers only receive procedural memory injection.
 - Personal memory does not appear in peer prompts.
 - Procedural memory remains the default work memory for all agents.
@@ -279,7 +279,7 @@ Likely files to change:
 ## Resolved decisions
 
 1. Memory retention is automatic through Hindsight for both banks; pruning / cleanup happens later through the memory peer or equivalent review workflow.
-2. The coordinator recalls **personal first**, then procedural.
+2. The corroborator recalls **personal first**, then procedural.
 3. Bank ids are explicit and stable:
    - `pi-ghosty-procedural`
    - `pi-ghosty-personal`
@@ -291,7 +291,7 @@ Use the smallest safe split:
 
 - create brand-new procedural and personal banks with the explicit ids above
 - keep the current procedural-style work-memory behavior, but move into the two new banks instead of maintaining a single shared bank
-- inject personal memory only into the coordinator
+- inject personal memory only into the corroborator
 - keep all working peers procedural-only
 - let the two Hindsight banks carry different missions and observation rules
 

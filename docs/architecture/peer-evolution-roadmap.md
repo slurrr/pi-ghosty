@@ -1,11 +1,11 @@
 # Peer Evolution Roadmap: The Agent OS
 
 ## Vision
-Transition `pi-ghosty` from an MVP agent harness into a specialized "Agent OS." The Coordinator acts as a master planner (Fast/Plan-heavy), while a fleet of specialized peers handle execution with strict role boundaries to manage cost, context, and drift.
+Transition `pi-ghosty` from an MVP agent harness into a specialized "Agent OS." The Corroborator acts as a master planner (Fast/Plan-heavy), while a fleet of specialized peers handle execution with strict role boundaries to manage cost, context, and drift.
 
 ## Cost Management Strategy
 - **Primary Execution (Coder)**: Maximize OpenAI Plus subscription quota (GPT-5.3/Codex).
-- **Coordination/Planning (Coordinator)**: Use Fast Gemini (2.0 Flash) for high-speed master planning and long-context window.
+- **Coordination/Planning (Corroborator)**: Use Fast Gemini (2.0 Flash) for high-speed master planning and long-context window.
 - **Utility/Background Tasks**: Offload to "Mini" models via OpenAI OAuth (GPT-5.4 Mini) to minimize pay-as-you-go AI Studio credit burn.
 - **Maintenance/Summary**: Offload to local vLLM models where possible.
 

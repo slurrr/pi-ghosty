@@ -20,7 +20,7 @@ function parseExplicitPeerPrefix(text: string): { peerName: keyof typeof peerAli
 export function explicitPeerAddressingExtensionFactory(agentName: string): ExtensionFactory {
   return (pi) => {
     pi.on("input", async (event, ctx) => {
-      if (agentName !== "coordinator") return undefined;
+      if (agentName !== "corroborator") return undefined;
       const parsed = parseExplicitPeerPrefix(event.text);
       if (!parsed) return undefined;
 

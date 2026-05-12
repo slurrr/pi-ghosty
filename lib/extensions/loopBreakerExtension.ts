@@ -16,7 +16,7 @@ export function loopBreakerExtensionFactory(options: {
   n: number;
 }): ExtensionFactory {
   const { agentName, n } = options;
-  const isWorkerPeer = agentName !== "coordinator";
+  const isWorkerPeer = agentName !== "corroborator";
 
   let failStreak = 0;
 
@@ -37,7 +37,7 @@ export function loopBreakerExtensionFactory(options: {
 
     pi.on("tool_execution_end", (event, ctx) => {
       // Peer-report guard: if a peer calls peer_report more than once in a turn,
-      // abort the turn so the coordinator can proceed with the first report.
+      // abort the turn so the corroborator can proceed with the first report.
       if (isWorkerPeer && event.toolName === "peer_report" && !event.isError) {
         peerReportCount += 1;
         if (peerReportCount >= 2) {
@@ -60,7 +60,7 @@ export function loopBreakerExtensionFactory(options: {
     });
 
     pi.on("tool_result", (event): { content?: any[] } | void => {
-      // Annotate duplicate peer_report attempts so the coordinator/user can see what happened.
+      // Annotate duplicate peer_report attempts so the corroborator/user can see what happened.
       if (duplicatePeerReportToolCallIds.has(event.toolCallId)) {
         const existing = Array.isArray(event.content) ? event.content : [];
         return {

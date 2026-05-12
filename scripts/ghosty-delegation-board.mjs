@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 const runDir = process.env.GHOSTY_PI_RUN_DIR?.trim() || resolve(homedir(), "runs", "pi-ghosty");
-const coordinatorSessionId = process.env.GHOSTY_COORDINATOR_SESSION_ID?.trim() || "";
+const corroboratorSessionId = process.env.GHOSTY_CORROBORATOR_SESSION_ID?.trim() || "";
 const jobsRoot = resolve(runDir, "data", "delegation-jobs");
 const sleepMs = 1500;
 
@@ -57,7 +57,7 @@ function collectJobs() {
     .map((name) => resolve(jobsRoot, name, "job.json"))
     .map(readJson)
     .filter(Boolean)
-    .filter((job) => !coordinatorSessionId || job.coordinatorSessionId === coordinatorSessionId)
+    .filter((job) => !corroboratorSessionId || job.corroboratorSessionId === corroboratorSessionId)
     .sort((a, b) => Date.parse(a.launchedAt || "") - Date.parse(b.launchedAt || ""));
 }
 
@@ -65,7 +65,7 @@ function renderBoard() {
   const jobs = collectJobs();
   const lines = [];
   lines.push("ghosty delegation board");
-  if (coordinatorSessionId) lines.push(`coordinator: ${coordinatorSessionId.slice(0, 8)}`);
+  if (corroboratorSessionId) lines.push(`corroborator: ${corroboratorSessionId.slice(0, 8)}`);
   lines.push("");
 
   if (jobs.length === 0) {

@@ -1,11 +1,11 @@
 ---
 name: delegate
-description: Default/mandatory coordinator workflow. Use whenever the user says delegate/delegation/hand off/spawn a peer/ask the researcher/coder/reviewer/memory, or whenever a task requires repo investigation (search/grep/find/locate) or implementation work. If unclear, read this skill first. 
+description: Default/mandatory corroborator workflow. Use whenever the user says delegate/delegation/hand off/spawn a peer/ask the researcher/coder/reviewer/memory, or whenever a task requires repo investigation (search/grep/find/locate) or implementation work. If unclear, read this skill first. 
 ---
 
 # Delegate (pi-ghosty)
 
-Use this when you (the coordinator) should hand off a focused task to a worker peer.
+Use this when you (the corroborator) should hand off a focused task to a worker peer.
 
 ## Quick rule
 Before delegating, call `peer_tools` to see what each peer can do. Don’t guess.

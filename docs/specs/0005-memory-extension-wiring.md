@@ -50,16 +50,16 @@ This is not the bug.
 ## Proposed implementation
 
 ### 1) Make memory wiring explicit in the extension path
-Update `.pi/extensions/ghosty/index.ts` so the coordinator session and delegated peer sessions both include the memory extension.
+Update `.pi/extensions/ghosty/index.ts` so the corroborator session and delegated peer sessions both include the memory extension.
 
 Preferred shape:
 - keep `noExtensions: true`
 - add `memoryExtensionFactory(...)` to the extension factories used for:
-  - the coordinator session
+  - the corroborator session
   - each delegated peer session
 
-#### Coordinator session
-The coordinator session in extension mode needs memory too.
+#### Corroborator session
+The corroborator session in extension mode needs memory too.
 Because the extension entrypoint only learns the session id at runtime, initialize memory wiring after `session_start` or via a small helper that can read the current session id from `ctx.sessionManager`.
 
 #### Peer sessions
@@ -73,7 +73,7 @@ The memory extension already emits trace records through `JsonlTrace.forAgent(..
 So the wiring task is not to invent a second trace format; it is to make sure the extension is actually installed.
 
 Trace expectations after wiring:
-- `~/runs/pi-ghosty-pi/data/traces/coordinator/<sessionId>.jsonl`
+- `~/runs/pi-ghosty-pi/data/traces/corroborator/<sessionId>.jsonl`
 - `~/runs/pi-ghosty-pi/data/traces/researcher/<sessionId>.jsonl`
 - etc.
 
@@ -116,7 +116,7 @@ If we want the smallest safe change:
 
 ## Acceptance criteria
 - A fresh extension-mode session writes memory trace files under `~/runs/pi-ghosty-pi/data/traces/...`.
-- Memory recall and retain events appear for the coordinator session.
+- Memory recall and retain events appear for the corroborator session.
 - Delegated peer sessions also emit memory events if memory is enabled for peers.
 - `noExtensions: true` remains in place.
 - No ambient cwd extensions are loaded accidentally.
@@ -124,12 +124,12 @@ If we want the smallest safe change:
 
 ## Suggested verification
 Run a fresh session and confirm:
-- `~/runs/pi-ghosty-pi/data/traces/coordinator/<sessionId>.jsonl` exists
+- `~/runs/pi-ghosty-pi/data/traces/corroborator/<sessionId>.jsonl` exists
 - it contains `memory_recall` and `memory_retain` events
 - a delegated peer session trace exists and contains the same event types
 - the trace files are written without enabling ambient `noExtensions: false`
 
 ## Open question
-If we want coordinator memory to activate only after the first prompt instead of on session start, should the coordinator extension register the memory factory lazily after `session_start` or with a small helper that defers initialization until the session id is available?
+If we want corroborator memory to activate only after the first prompt instead of on session start, should the corroborator extension register the memory factory lazily after `session_start` or with a small helper that defers initialization until the session id is available?
 
 Recommended answer: use the smallest lazy initialization that preserves one-time registration and keeps the extension explicit.

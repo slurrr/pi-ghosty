@@ -33,19 +33,19 @@ The system must support:
 - hybrid operation
 - switching between those without redesigning the architecture
 
-## Coordinator and Peer Model Behavior
+## Corroborator and Peer Model Behavior
 
-The coordinator model must be selectable independently of peer models.
+The corroborator model must be selectable independently of peer models.
 
 That means ghosty should support all of the following patterns:
 
-- local coordinator with local peers
-- frontier coordinator with frontier peers
-- frontier coordinator with local coder/reviewer peers
-- local coordinator with frontier specialist peers
+- local corroborator with local peers
+- frontier corroborator with frontier peers
+- frontier corroborator with local coder/reviewer peers
+- local corroborator with frontier specialist peers
 - mixed peer pools where different roles prefer different model classes
 
-Coordinator model choice must not force all delegated peers onto that same provider class.
+Corroborator model choice must not force all delegated peers onto that same provider class.
 
 ## Role Defaults and Routing
 
@@ -53,7 +53,7 @@ Each agent role should be able to define a preferred default model.
 
 Examples:
 
-- coordinator defaults to a frontier model
+- corroborator defaults to a frontier model
 - coder defaults to a local model
 - reviewer defaults to a local or frontier model
 - researcher defaults to a frontier model
@@ -82,13 +82,13 @@ The config system must support all of the following at once:
    - Local-only request knobs must not be forced onto frontier models.
 
 3. Allow arbitrary default model selection
-   - It should be easy to change the default coordinator model.
+   - It should be easy to change the default corroborator model.
    - It should be easy to change per-role defaults.
    - The system should not require architectural rewrites whenever model preferences change.
 
 4. Support hybrid routing
-   - A frontier coordinator must still be able to delegate to local models.
-   - A local coordinator must still be able to delegate to frontier models.
+   - A frontier corroborator must still be able to delegate to local models.
+   - A local corroborator must still be able to delegate to frontier models.
    - Role defaults and routing overrides must coexist cleanly.
 
 ## UX Goal
@@ -97,7 +97,7 @@ The user experience should feel like a single flexible ghosty system.
 
 Ideal user-facing behavior:
 
-- I choose whatever coordinator model I want.
+- I choose whatever corroborator model I want.
 - Ghosty knows which models are available to which roles.
 - Each role has sane defaults.
 - Delegation can cross local/frontier boundaries.
@@ -131,7 +131,7 @@ The important question is:
 
 Ghosty extension should become a Pi-native multi-model orchestrator where:
 
-- the coordinator can be local or frontier
+- the corroborator can be local or frontier
 - peers can be local or frontier independently
 - each role has configurable default models
 - routing can override role defaults
@@ -144,4 +144,4 @@ Ghosty extension should become a Pi-native multi-model orchestrator where:
 
 The intended experience is:
 
-> Ghosty is one agent system. I can choose my coordinator model, set role defaults, and let delegation/routing mix local and frontier models intelligently, while each model automatically gets the right provider-specific behavior.
+> Ghosty is one agent system. I can choose my corroborator model, set role defaults, and let delegation/routing mix local and frontier models intelligently, while each model automatically gets the right provider-specific behavior.

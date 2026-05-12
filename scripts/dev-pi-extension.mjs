@@ -42,7 +42,7 @@ const configPath = envConfigPath && existsSync(resolve(projectDir, envConfigPath
 const args = ["-e", extPath];
 if (process.env.GHOSTY_PI_MODEL?.trim()) args.push("--model", process.env.GHOSTY_PI_MODEL.trim());
 if (process.env.GHOSTY_PI_SESSION_DIR?.trim()) args.push("--session-dir", process.env.GHOSTY_PI_SESSION_DIR.trim());
-else args.push("--session-dir", resolve(runDir, "data", "sessions", "coordinator"));
+else args.push("--session-dir", resolve(runDir, "data", "sessions", "corroborator"));
 
 const res = spawnSync("pi", args, {
   stdio: "inherit",

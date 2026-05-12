@@ -24,10 +24,10 @@ Progress
 - vLLM Migration: Moved discovery/registration logic to lib/config/vllmProvider.ts.
 - Helper Extraction: Migrated standalone utilities to lib/utils/helpers.ts.
 - Cleanup: Deleted legacy relics: lib/pi/, lib/env.ts, and lib/memory/hindsight.ts.
-- War Room Layout: Updated /ghosty peer open to default to a 3-pane tmux layout (Coordinator left, Peer top-right, Logs bottom-right).
+- War Room Layout: Updated /ghosty peer open to default to a 3-pane tmux layout (Corroborator left, Peer top-right, Logs bottom-right).
 - Sampling Traces: Wired GHOSTY_SAMPLING_TRACE environment variable to stream raw tokens to logs.
 - Agent OS Strategy: Created docs/architecture/peer-evolution-roadmap.md and docs/architecture/agent-os-peer-directory.md.
-- Model Optimization: Updated pi-agent.json defaults to use gemini-3-flash-preview (Coordinator), gpt-5.4-mini (Researcher/Reviewer), and
+- Model Optimization: Updated pi-agent.json defaults to use gemini-3-flash-preview (Corroborator), gpt-5.4-mini (Researcher/Reviewer), and
 vllm/omnicoder-9b (Memory).
 
 ### In Progress
@@ -43,7 +43,7 @@ Key Decisions
 
 - War Room Visibility: Defaulting to vertical/horizontal tmux splits to provide real-time JSONL trace visibility alongside interactive
 peer sessions.
-- Cost-Aware Routing: Coordinator stays on Gemini (speed/context), Coder on GPT-5.3 Codex (precision), while Researchers/Reviewers use
+- Cost-Aware Routing: Corroborator stays on Gemini (speed/context), Coder on GPT-5.3 Codex (precision), while Researchers/Reviewers use
 OpenAI "Mini" models to protect Gemini credits.
 - Local Summarization: Offloading background maintenance (Memory/Summarization) to local vLLM models (Omnicoder-9b) to achieve zero-cost
 overhead.
@@ -62,7 +62,7 @@ Critical Context
 - Sampling Variable: GHOSTY_SAMPLING_TRACE=1 enables raw token streaming in the log pane.
 - CDP Port: 19825 for bb-browser.
 - Checkpoint Location: notes/session-checkpoint.md.
-- Gemini 3 Flash: Currently preferred for Coordinator due to AI Studio 1 RPM throttle bypass.
+- Gemini 3 Flash: Currently preferred for Corroborator due to AI Studio 1 RPM throttle bypass.
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -76,7 +76,7 @@ inquired about the pricing of Gemini APIs and whether these models support "thin
 Early Progress
 
 - The user established strict procedural boundaries: insisting on a slow, step-by-step approach rather than "one-shotting" tasks.
-- Confirmed a preference for reserving Gemini 1.5 Pro for high-level "coordinator" tasks while seeking cost-effective alternatives for
+- Confirmed a preference for reserving Gemini 1.5 Pro for high-level "corroborator" tasks while seeking cost-effective alternatives for
 secondary agents.
 - Transitioned the interaction style back to a more deliberate, human-like conversational pace.
 

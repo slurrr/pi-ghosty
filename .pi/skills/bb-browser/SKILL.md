@@ -5,7 +5,7 @@ Use the gated native tools instead:
 
 - `browser_open(url)` to navigate
 - `browser_snapshot(selector?)` to capture page content
-- `browser_eval(script)` for privileged JS evaluation (coordinator only)
+- `browser_eval(script)` for privileged JS evaluation (corroborator only)
 
 Notes:
 - Prefer `browser_snapshot` first for data acquisition.

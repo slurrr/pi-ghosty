@@ -169,7 +169,7 @@ These should be explicitly stated as **current implementation constraints**:
 
 ---
 
-## 5) Suggested checklist for Coordinator
+## 5) Suggested checklist for Corroborator
 
 - [ ] Decide whether backend launcher belongs in this repo; if not, scrub `agentmux/...` citations.
 - [ ] Update `hindsight_best_practices_pg0.md` to include the `defaults.memory` knobs and recommended values.

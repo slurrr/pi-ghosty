@@ -13,7 +13,7 @@ The goal is to inspect the actual artifacts and decide:
 Implement and verify the dual-bank memory spec:
 - procedural bank
 - personal bank
-- coordinator recalls from both banks
+- corroborator recalls from both banks
 - working peers recall from procedural only
 - traces and receipts show what happened
 
@@ -39,12 +39,12 @@ Primary artifacts:
 - [ ] Did the system start with the intended split-bank config?
 - [ ] Can we tell which bank ids were used for procedural and personal memory?
 - [ ] Can we tell which roles were allowed to recall from which bank?
-- [ ] Did the coordinator and peers launch with the expected memory wiring?
+- [ ] Did the corroborator and peers launch with the expected memory wiring?
 
 ### 2) Delegation envelope
 - [ ] Did the delegation task sent to coder clearly point at the spec and success criteria?
 - [ ] Was the delegation envelope visible enough to reconstruct later?
-- [ ] Did the coordinator keep the task bounded instead of overexplaining it?
+- [ ] Did the corroborator keep the task bounded instead of overexplaining it?
 - [ ] Did the launch artifact identify the peer/session/job clearly enough?
 
 ### 3) Peer report shape
@@ -61,7 +61,7 @@ Primary artifacts:
 - [ ] Could we tell whether failures were spec gaps, implementation bugs, or report-shape problems?
 
 ### 5) Memory behavior
-- [ ] Did the coordinator recall from both banks as intended?
+- [ ] Did the corroborator recall from both banks as intended?
 - [ ] Did working peers stay out of the personal bank?
 - [ ] Did memory injection add useful continuity rather than noise?
 - [ ] Did the recalled context help the session stay oriented on the task?
@@ -84,7 +84,7 @@ Primary artifacts:
 For every failure or ambiguity, note whether it suggests:
 - [ ] a missing field in the delegation envelope
 - [ ] a missing field in peer reports
-- [ ] a missing state marker in the coordinator loop
+- [ ] a missing state marker in the corroborator loop
 - [ ] a missing trace/receipt artifact
 - [ ] a missing memory-routing rule
 - [ ] no contract change needed; just an implementation bug

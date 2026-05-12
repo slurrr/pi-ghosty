@@ -1,9 +1,9 @@
 # Spec: Sampling knobs in `pi-agent.json`
 
 ## Goal
-Make LLM sampling behavior stable and tunable **via config only** (no env vars yet), with the ability to set different sampling for coordinator vs worker peers.
+Make LLM sampling behavior stable and tunable **via config only** (no env vars yet), with the ability to set different sampling for corroborator vs worker peers.
 
-This is intended to address quality drift caused by provider/server defaults (vLLM/OpenAI-compat), and to support role-specific behavior (e.g. low-temp workers, higher-temp coordinator).
+This is intended to address quality drift caused by provider/server defaults (vLLM/OpenAI-compat), and to support role-specific behavior (e.g. low-temp workers, higher-temp corroborator).
 
 ## Non-goals
 - No mid-run / per-request sampling changes.
@@ -36,7 +36,7 @@ Add `sampling` under both `defaults` and per-agent config:
     }
   },
   "agents": {
-    "coordinator": {
+    "corroborator": {
       "tools": ["read", "grep", "find", "ls", "delegate"],
       "thinkingLevel": "off",
       "sampling": {
@@ -135,6 +135,6 @@ This should go to the existing agent trace JSONL:
 - `~/runs/pi-ghosty/data/traces/<agentName>/<sessionId>.jsonl`
 
 ## Acceptance criteria
-- With `defaults.sampling` set, coordinator and peers produce measurably more stable outputs across runs (no drift from vLLM defaults).
-- With per-agent overrides, worker peers behave more deterministic/boring (low temp), coordinator can be more stylistic (higher temp).
+- With `defaults.sampling` set, corroborator and peers produce measurably more stable outputs across runs (no drift from vLLM defaults).
+- With per-agent overrides, worker peers behave more deterministic/boring (low temp), corroborator can be more stylistic (higher temp).
 - No change in behavior when sampling is absent from config.

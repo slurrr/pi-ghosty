@@ -12,7 +12,7 @@ The runtime has been removed from the active path and the repo is extension-only
 
 ## What the extension path now owns
 
-- coordinator startup and tool surface in `src/pi/createSession.ts`
+- corroborator startup and tool surface in `src/pi/createSession.ts`
 - delegation and peer reports in `.pi/extensions/ghosty/index.ts`
 - workflow monitoring in `src/workflow/workflowMonitor.ts`
 - peer tool/status helpers in `src/extensions/peerToolsExtension.ts`

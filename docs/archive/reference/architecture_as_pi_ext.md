@@ -16,7 +16,7 @@ Instead of running `tsx src/index.ts`, we run upstream pi normally (TUI/RPC/etc.
 - Optional packaging: publishable pi package (npm/git) that exposes that same extension entrypoint.
 
 The extension:
-- makes the current session the **Coordinator** session
+- makes the current session the **Corroborator** session
 - registers a `delegate` tool (and any other orchestration tools)
 - creates/resumes peer sessions on demand using pi’s session/runtime APIs
 - enforces a structured peer-report contract (via tool + schema)
@@ -47,7 +47,7 @@ pi-ghosty/
           prompts/
             peer_parts.ts
   peers/
-    coordinator/*.md
+    corroborator/*.md
     coder/*.md
     researcher/*.md
     reviewer/*.md
@@ -79,12 +79,12 @@ Ghosty’s allowlist can remain in `pi-agent.json` and be enforced by:
 - (optional) a tool_call policy extension for defense in depth
 
 ## Roles and prompts
-### Coordinator
-- The interactive pi session the user is in is the coordinator.
-- Coordinator gets:
+### Corroborator
+- The interactive pi session the user is in is the corroborator.
+- Corroborator gets:
   - pi base system prompt
   - `.pi/APPEND_SYSTEM.md`
-  - `peers/coordinator/*.md` appended
+  - `peers/corroborator/*.md` appended
 
 ### Worker peers
 Each peer session gets:
@@ -98,7 +98,7 @@ Implementation options:
 
 ## Orchestration flow
 ### Delegate tool
-Register a coordinator-available tool:
+Register a corroborator-available tool:
 - `delegate(peerName, task, context?, expectedOutput?)`
 
 Execution:
@@ -106,9 +106,9 @@ Execution:
 2) Send a structured delegation prompt to the peer
 3) Require peer to call `peer_report` tool exactly once
 4) Parse/validate peer_report payload
-5) Return a concise `toolResult.content` for the coordinator + include full structured result in `toolResult.details`
+5) Return a concise `toolResult.content` for the corroborator + include full structured result in `toolResult.details`
 
-Important: keep the important results in `toolResult.content` so the coordinator model reliably “sees” it.
+Important: keep the important results in `toolResult.content` so the corroborator model reliably “sees” it.
 
 ### Peer report tool
 Register a tool that is only active inside peer sessions:
@@ -131,7 +131,7 @@ Note: pi’s public extension API is event-driven; session replacement APIs are 
 
 ## Tracing and observability
 Use JSONL trace files under runDir:
-- coordinator message entry
+- corroborator message entry
 - delegation start/end
 - peer session id/state
 - peer_report received vs missing
@@ -144,7 +144,7 @@ Key principle: tracing should be implemented as an extension (file-backed) so `/
 Treat memory as a service dependency.
 
 v1:
-- coordinator/peers call recall before turns and retain after turns
+- corroborator/peers call recall before turns and retain after turns
 - keep recall bounded and inject into system prompt
 - make memory optional (degrade gracefully when down)
 
@@ -155,7 +155,7 @@ Longer-term:
 ## Telegram
 Telegram integration should remain upstream (`pi-telegram`).
 Ghosty should only provide:
-- coordinator behavior that knows how to respond to telegram messages
+- corroborator behavior that knows how to respond to telegram messages
 - optional helper tools (e.g. attach file) if needed
 
 ## Migration plan from current pi-ghosty

@@ -14,7 +14,7 @@ pi-ghosty uses a **single-model, multi-peer architecture** where each peer is de
 
 | Peer | File Count | Strengths | Gaps |
 |------|------------|-----------|------|
-| **Coordinator** | 6 | Rich persona/identity context, user modeling, operational scaffolding | No explicit tool/skills declaration, inconsistent file purposes |
+| **Corroborator** | 6 | Rich persona/identity context, user modeling, operational scaffolding | No explicit tool/skills declaration, inconsistent file purposes |
 | **Coder** | 2 | Clear role definition, concise peer-report spec | Missing tool context, no delegation protocol details |
 | **Researcher** | 2 | Clear research methodology, data-first approach | No tool context, no peer-report spec (copy-paste from others) |
 | **Reviewer** | 2 | Strong QA focus, scope drift detection | No tool context, no peer-report spec (copy-paste) |
@@ -26,13 +26,13 @@ pi-ghosty uses a **single-model, multi-peer architecture** where each peer is de
 - ⚠️ **Concern:** Peer-report specs duplicated across 4 peers without customization
 - ⚠️ **Concern:** No explicit tool/skills declarations in any peer
 - ⚠️ **Concern:** Missing cross-peer communication protocols
-- ✅ **Good:** Coordinator has the most comprehensive setup
+- ✅ **Good:** Corroborator has the most comprehensive setup
 
 ---
 
 ## Peer-by-Peer Analysis
 
-### Coordinator
+### Corroborator
 
 **Files:**
 - `00-role.md` — Core responsibilities and delegation philosophy
@@ -52,7 +52,7 @@ pi-ghosty uses a **single-model, multi-peer architecture** where each peer is de
 - No explicit declaration of available tools or skills
 - No reference to the delegation protocol mechanics (peer_tools, session IDs)
 - GHOSTY.md is verbose and mixes operational logic with role definition
-- No clear boundary between what Coordinator does vs. what peers do
+- No clear boundary between what Corroborator does vs. what peers do
 
 **Recommendations:**
 1. Add a `00-tools.md` or `00-capabilities.md` file listing available tools and skills
@@ -167,7 +167,7 @@ pi-ghosty uses a **single-model, multi-peer architecture** where each peer is de
 |-------|----------------|--------|
 | Duplicate peer-report.md | Coder, Researcher, Reviewer, Memory | Inconsistent reporting, maintenance overhead |
 | No tool declarations | All peers | Unclear capabilities, potential tool misuse |
-| No delegation protocol docs | All peers | Unclear how peers interact with Coordinator |
+| No delegation protocol docs | All peers | Unclear how peers interact with Corroborator |
 | No skills declarations | All peers | Unclear what specialized skills are available |
 
 ### Missing Documentation
@@ -194,7 +194,7 @@ pi-ghosty uses a **single-model, multi-peer architecture** where each peer is de
 1. **Add skills declarations** to each peer
 2. **Document peer communication patterns**
 3. **Add session management documentation**
-4. **Consolidate Coordinator's GHOSTY.md** into operational docs
+4. **Consolidate Corroborator's GHOSTY.md** into operational docs
 
 ### Long-term (v3+)
 
@@ -219,7 +219,7 @@ Files are assembled in **lexicographic order** (per `peers/README.md`):
 ### File Size Guidelines
 
 - Keep individual files **small and focused** (per `peers/README.md`)
-- Coordinator has the most files (6) but they're each concise
+- Corroborator has the most files (6) but they're each concise
 - Consider adding a `00-summary.md` or `00-index.md` to each peer folder if the file count grows
 
 ### Shared vs. Peer-Specific Parts

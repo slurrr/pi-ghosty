@@ -146,7 +146,7 @@ Success criteria:
 - no fresh retain-shape warnings in current logs
 
 ### 1.3 Confirm bank wiring is intentionally symmetric at the transcript level
-- Verify that both banks are intentionally being fed the coordinator transcript
+- Verify that both banks are intentionally being fed the corroborator transcript
 - Reconfirm that bank separation depends on missions/config, not different transcript routing
 
 Success criteria:

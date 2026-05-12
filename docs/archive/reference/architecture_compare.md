@@ -23,7 +23,7 @@ You want a **personal agent harness** that:
    - stable interactive UX
 
 2. **Adds Ghosty-specific capabilities**
-   - multi-peer orchestration (coordinator + specialist peers)
+   - multi-peer orchestration (corroborator + specialist peers)
    - concurrency (`delegate_batch`), routing, session catalog
    - strict peer-report contract + structured results
    - heavy observability/tracing
@@ -111,12 +111,12 @@ This is doable, but the details matter.
 
 This is the important “now or never” part.
 
-### 5.1 True background/concurrent peer turns while staying in the coordinator TUI
+### 5.1 True background/concurrent peer turns while staying in the corroborator TUI
 Ghosty today can dispatch parallel work because it owns the runtime and tool loop.
 
 In a pure extension, you must confirm the extension API supports:
 - starting LLM calls for other sessions “in the background”
-- awaiting them while the coordinator turn is still processing
+- awaiting them while the corroborator turn is still processing
 
 If Pi’s extension system only allows work inside the current turn pipeline (single-threaded), you can still do concurrency internally (Promises), but you must ensure the underlying session execution supports it.
 
@@ -124,7 +124,7 @@ If Pi’s extension system only allows work inside the current turn pipeline (si
 
 ### 5.2 Managing multiple persistent peer sessions without cluttering the human session tree
 You probably want:
-- “coordinator session” visible/primary
+- “corroborator session” visible/primary
 - “peer sessions” mostly invisible/background, but persistent
 
 Pi’s session tree is user-facing. If peers show up like normal sessions, the UI could get noisy.

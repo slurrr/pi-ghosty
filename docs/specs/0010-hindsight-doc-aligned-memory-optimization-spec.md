@@ -300,7 +300,7 @@ Required default recall position for Ghosty interactive use:
 - choose recall `types` based on real prompt needs, not as a panic reaction
 - do not add extra repo-local limiting knobs that fight Hindsight's own shaping unless they are explicitly surfaced and justified
 
-Recommended default baseline for coordinator live prompting:
+Recommended default baseline for corroborator live prompting:
 
 - `types = ["observation", "world", "experience"]`
 - `budget = "mid"`
@@ -314,7 +314,7 @@ Reason:
 - this remains close to Hindsight's normal retrieval model
 - source facts stay off because docs position them as provenance/audit extras, not the default agent loop shape
 - chunks are the doc-backed lever when the agent needs exact wording or surrounding source context
-- if later evidence shows that observations-only works better for a particular coordinator mode, that can be introduced as a **mode**, not as the only global default
+- if later evidence shows that observations-only works better for a particular corroborator mode, that can be introduced as a **mode**, not as the only global default
 
 Required visibility rule:
 
@@ -472,7 +472,7 @@ Context rule:
 - observations mission: optional; if set, keep it aligned to durable person-centric knowledge
 - entity labels: optional phase-2 if needed
 
-### Coordinator recall target
+### Corroborator recall target
 
 Doc-aligned baseline:
 
@@ -489,7 +489,7 @@ Doc-aligned baseline:
 Doc-aligned baseline:
 
 - procedural bank only
-- same recall defaults as coordinator unless a later evidence pass justifies a different peer mode
+- same recall defaults as corroborator unless a later evidence pass justifies a different peer mode
 
 ## Implementation plan
 
@@ -617,7 +617,7 @@ On a fresh run after cleanup/reset, receipts should show:
    - docs support rich conversation JSON generally
    - this repo still needs to decide whether narrowing the personal transcript beyond removing tool activity is justified
 
-2. Should Ghosty keep a single normal coordinator recall mode, or add explicit modes such as:
+2. Should Ghosty keep a single normal corroborator recall mode, or add explicit modes such as:
    - normal recall
    - deep inspection
    - observation-focused recall

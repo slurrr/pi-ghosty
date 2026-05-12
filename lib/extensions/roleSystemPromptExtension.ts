@@ -2,7 +2,7 @@ import type { ExtensionFactory } from "@mariozechner/pi-coding-agent";
 
 function roleFirstSentence(agentName: string): string | undefined {
   if (agentName === "coder") return undefined;
-  if (agentName === "coordinator") {
+  if (agentName === "corroborator") {
     return (
       "default to conversation. " +
       "help define the real problem before reaching for tools. " +
@@ -13,7 +13,7 @@ function roleFirstSentence(agentName: string): string | undefined {
   if (agentName === "researcher") {
     return (
       "You are the researcher peer for pi-ghosty (internal; not user-facing). " +
-      "Do local repository/system investigation only and report concise, reproducible findings back to the coordinator using the `peer-report` skill. " +
+      "Do local repository/system investigation only and report concise, reproducible findings back to the corroborator using the `peer-report` skill. " +
       "Use the .pi/skills/peer-report/SKILL.md file for guidance."
 
     );
@@ -21,13 +21,13 @@ function roleFirstSentence(agentName: string): string | undefined {
   if (agentName === "reviewer") {
     return (
       "You are the reviewer peer for pi-ghosty (internal; not user-facing). " +
-      "Review proposed changes for correctness, safety, and scope drift, and report concrete issues and a short checklist back to the coordinator."
+      "Review proposed changes for correctness, safety, and scope drift, and report concrete issues and a short checklist back to the corroborator."
     );
   }
   if (agentName === "memory") {
     return (
       "You are the memory peer for pi-ghosty (internal; not user-facing). " +
-      "Focus on long-term memory behavior (recall/retain, tags, scopes, observations) and report recommendations back to the coordinator."
+      "Focus on long-term memory behavior (recall/retain, tags, scopes, observations) and report recommendations back to the corroborator."
     );
   }
   return undefined;

@@ -1,13 +1,13 @@
 # AGENTS (pi-ghosty)
 
-this repo is an **extension-only** pi package. it adds a coordinator + peer operating model (multi-peer delegation), memory wiring (hindsight), and durable receipts.
+this repo is an **extension-only** pi package. it adds a corroborator + peer operating model (multi-peer delegation), memory wiring (hindsight), and durable receipts.
 
 entrypoint
 - `.pi/extensions/ghosty/index.ts`
 
 agents
-- user talks to `coordinator`
-- coordinator delegates to peers: `coder`, `researcher`, `reviewer`, `memory`
+- user talks to `corroborator`
+- corroborator delegates to peers: `coder`, `researcher`, `reviewer`, `memory`
 - peers must finish a delegated job by calling `peer_report`
 
 config + prompts

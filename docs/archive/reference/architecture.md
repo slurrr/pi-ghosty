@@ -5,12 +5,12 @@ This is a working document. It describes current structure without locking futur
 ## Layers
 
 ### Frontends (IO)
-- **TUI**: pi interactive mode hosted on the coordinator session (`src/tui/startTui.ts`).
+- **TUI**: pi interactive mode hosted on the corroborator session (`src/tui/startTui.ts`).
 - **Telegram**: provided via upstream `pi-telegram` extension (installed separately; see `docs/decisions/0005-telegram-via-pi-telegram.md`).
 
 ### Runtime (orchestration)
 - `GhostyRuntime` owns:
-  - coordinator + peer session lifecycle
+  - corroborator + peer session lifecycle
   - delegation (`delegate` tool)
   - peer report extraction (`peer_report` tool)
   - traces + artifacts
@@ -34,11 +34,11 @@ File: `src/pi/createSession.ts`
 - For non-coder peers, the first sentence is replaced to match the role (surgical override in session creation).
 
 ## Tools and delegation
-- Coordinator can call `delegate(peerName, task, context?, expectedOutput?)`.
+- Corroborator can call `delegate(peerName, task, context?, expectedOutput?)`.
 - Runtime prompts the target peer session.
 - Peer is expected to call `peer_report(...)`.
   - `peer_report` returns minimal visible content and puts structured data in tool result `details`.
-- Runtime returns the structured result to the coordinator as the `delegate` tool result.
+- Runtime returns the structured result to the corroborator as the `delegate` tool result.
 
 Fallback:
 - If `peer_report` is missing, runtime retries once with a minimal instruction, then falls back to last assistant text.

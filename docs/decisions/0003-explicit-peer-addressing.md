@@ -17,7 +17,7 @@ Support explicit peer addressing via a prefix in user input:
 - `@reviewer ...`
 - `@memory ...`
 
-When the prefix is present, the IO layer (or a shared input-transform extension) rewrites the message into a coordinator
+When the prefix is present, the IO layer (or a shared input-transform extension) rewrites the message into a corroborator
 instruction that triggers delegation to the specified peer.
 
 ## Consequences

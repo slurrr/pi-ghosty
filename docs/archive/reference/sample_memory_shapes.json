@@ -35,14 +35,14 @@
       },
       "documents": [
         {
-          "id": "project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+          "id": "project:pi-ghosty/corroborator/001d4ec8-6fdd-428f-9b96-80d044dffe7c",
           "bank_id": "pi-ghosty-procedural",
           "text_length": 398956,
           "memory_unit_count": 630,
           "created_at": "2026-04-30T14:58:47.169963+00:00",
           "updated_at": "2026-04-30T15:17:48.451778+00:00",
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -51,14 +51,14 @@
           }
         },
         {
-          "id": "project:pi-ghosty/coordinator/ad0e8f6d-d80e-459b-97a5-9f3e4fe76414",
+          "id": "project:pi-ghosty/corroborator/ad0e8f6d-d80e-459b-97a5-9f3e4fe76414",
           "bank_id": "pi-ghosty-procedural",
           "text_length": 10563,
           "memory_unit_count": 8,
           "created_at": "2026-04-30T04:41:49.930266+00:00",
           "updated_at": "2026-04-30T04:43:55.423481+00:00",
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:ad0e8f6d-d80e-459b-97a5-9f3e4fe76414",
             "project:pi-ghosty"
           ],
@@ -83,14 +83,14 @@
           }
         },
         {
-          "id": "project:pi-ghosty/coordinator/47e04746-28cc-4c31-8066-50abd919dee5",
+          "id": "project:pi-ghosty/corroborator/47e04746-28cc-4c31-8066-50abd919dee5",
           "bank_id": "pi-ghosty-procedural",
           "text_length": 122,
           "memory_unit_count": 0,
           "created_at": "2026-04-30T03:08:58.050638+00:00",
           "updated_at": "2026-04-30T03:08:58.050638+00:00",
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:47e04746-28cc-4c31-8066-50abd919dee5",
             "project:pi-ghosty"
           ],
@@ -100,7 +100,7 @@
           }
         },
         {
-          "id": "project:pi-ghosty/coordinator/0fc2b009-e3c0-4a3e-8c0d-5a93142d748b",
+          "id": "project:pi-ghosty/corroborator/0fc2b009-e3c0-4a3e-8c0d-5a93142d748b",
           "bank_id": "pi-ghosty-procedural",
           "text_length": 477,
           "memory_unit_count": 2,
@@ -108,7 +108,7 @@
           "updated_at": "2026-04-30T03:02:55.286742+00:00",
           "tags": [
             "session:0fc2b009-e3c0-4a3e-8c0d-5a93142d748b",
-            "agent:coordinator",
+            "agent:corroborator",
             "project:pi-ghosty"
           ],
           "retain_params": {
@@ -124,10 +124,10 @@
           "text": "During a session, the agent should update the checkpoint file in place, preferring to rewrite current sections over appending narrative notes, and only appending a dated note for genuinely useful milestones or dead ends. | To maintain a concise and up-to-date record of the session's state.",
           "context": "pi-ghosty agent session transcript",
           "date": "2026-04-30T15:14:50.902152+00:00",
-          "chunk_id": "pi-ghosty-procedural_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "chunk_id": "pi-ghosty-procedural_project:pi-ghosty/corroborator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -139,10 +139,10 @@
           "text": "At the start of a session, the default behavior is to run the 'checkpoint' command, read any existing checkpoint, and refresh it if it is stale or empty. | To establish a baseline context before starting substantial work.",
           "context": "pi-ghosty agent session transcript",
           "date": "2026-04-30T15:14:50.892152+00:00",
-          "chunk_id": "pi-ghosty-procedural_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "chunk_id": "pi-ghosty-procedural_project:pi-ghosty/corroborator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -154,10 +154,10 @@
           "text": "The required sections to maintain in the checkpoint file are Current Goal, Current State, Decisions, Open Problems, and Resume Instructions. | To provide a structured summary of the session's progress and status.",
           "context": "pi-ghosty agent session transcript",
           "date": "2026-04-30T15:14:50.882152+00:00",
-          "chunk_id": "pi-ghosty-procedural_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "chunk_id": "pi-ghosty-procedural_project:pi-ghosty/corroborator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -169,10 +169,10 @@
           "text": "The file location policy for checkpoints depends on the current working directory: use CHECKPOINT.md in task-roots, notes/session-checkpoint.md in git repos, ~/CHECKPOINT.md under the home tree outside a repo/task root, or CHECKPOINT.md in the current directory otherwise. | To ensure the checkpoint file is saved in the correct location relative to the project structure.",
           "context": "pi-ghosty agent session transcript",
           "date": "2026-04-30T15:14:50.872152+00:00",
-          "chunk_id": "pi-ghosty-procedural_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "chunk_id": "pi-ghosty-procedural_project:pi-ghosty/corroborator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -184,10 +184,10 @@
           "text": "The goal of checkpointing is to leave a compact, high-signal resume artifact, not to mirror the full conversation history. | To allow another agent or a future session to use the artifact without rescanning the entire repository.",
           "context": "pi-ghosty agent session transcript",
           "date": "2026-04-30T15:14:50.862152+00:00",
-          "chunk_id": "pi-ghosty-procedural_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "chunk_id": "pi-ghosty-procedural_project:pi-ghosty/corroborator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -204,7 +204,7 @@
           "chunk_id": null,
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -219,7 +219,7 @@
           "chunk_id": null,
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -234,7 +234,7 @@
           "chunk_id": null,
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -249,7 +249,7 @@
           "chunk_id": null,
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -264,7 +264,7 @@
           "chunk_id": null,
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -300,14 +300,14 @@
       },
       "documents": [
         {
-          "id": "project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c",
+          "id": "project:pi-ghosty/corroborator/001d4ec8-6fdd-428f-9b96-80d044dffe7c",
           "bank_id": "pi-ghosty-personal",
           "text_length": 398956,
           "memory_unit_count": 595,
           "created_at": "2026-04-30T14:58:51.125811+00:00",
           "updated_at": "2026-04-30T15:21:23.313470+00:00",
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -316,14 +316,14 @@
           }
         },
         {
-          "id": "project:pi-ghosty/coordinator/ad0e8f6d-d80e-459b-97a5-9f3e4fe76414",
+          "id": "project:pi-ghosty/corroborator/ad0e8f6d-d80e-459b-97a5-9f3e4fe76414",
           "bank_id": "pi-ghosty-personal",
           "text_length": 10563,
           "memory_unit_count": 1,
           "created_at": "2026-04-30T04:41:50.081384+00:00",
           "updated_at": "2026-04-30T04:43:58.654790+00:00",
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:ad0e8f6d-d80e-459b-97a5-9f3e4fe76414",
             "project:pi-ghosty"
           ],
@@ -332,14 +332,14 @@
           }
         },
         {
-          "id": "project:pi-ghosty/coordinator/47e04746-28cc-4c31-8066-50abd919dee5",
+          "id": "project:pi-ghosty/corroborator/47e04746-28cc-4c31-8066-50abd919dee5",
           "bank_id": "pi-ghosty-personal",
           "text_length": 122,
           "memory_unit_count": 1,
           "created_at": "2026-04-30T03:09:01.011668+00:00",
           "updated_at": "2026-04-30T03:09:01.011668+00:00",
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:47e04746-28cc-4c31-8066-50abd919dee5",
             "project:pi-ghosty"
           ],
@@ -349,7 +349,7 @@
           }
         },
         {
-          "id": "project:pi-ghosty/coordinator/0fc2b009-e3c0-4a3e-8c0d-5a93142d748b",
+          "id": "project:pi-ghosty/corroborator/0fc2b009-e3c0-4a3e-8c0d-5a93142d748b",
           "bank_id": "pi-ghosty-personal",
           "text_length": 477,
           "memory_unit_count": 3,
@@ -357,7 +357,7 @@
           "updated_at": "2026-04-30T03:03:04.761403+00:00",
           "tags": [
             "session:0fc2b009-e3c0-4a3e-8c0d-5a93142d748b",
-            "agent:coordinator",
+            "agent:corroborator",
             "project:pi-ghosty"
           ],
           "retain_params": {
@@ -366,7 +366,7 @@
           }
         },
         {
-          "id": "project:pi-ghosty/coordinator/50687938-b48b-4eae-8259-6df18ade13d3",
+          "id": "project:pi-ghosty/corroborator/50687938-b48b-4eae-8259-6df18ade13d3",
           "bank_id": "pi-ghosty-personal",
           "text_length": 11542,
           "memory_unit_count": 16,
@@ -374,7 +374,7 @@
           "updated_at": "2026-04-29T16:47:20.574901+00:00",
           "tags": [
             "project:pi-ghosty",
-            "agent:coordinator",
+            "agent:corroborator",
             "session:50687938-b48b-4eae-8259-6df18ade13d3"
           ],
           "retain_params": {
@@ -390,10 +390,10 @@
           "text": "The phrase 'we've got the keys to the kingdom now...' is located at the leaf node `901db2e4` within the session tree.",
           "context": "pi-ghosty agent session transcript",
           "date": "2026-04-30T15:17:55.699725+00:00",
-          "chunk_id": "pi-ghosty-personal_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_164",
+          "chunk_id": "pi-ghosty-personal_project:pi-ghosty/corroborator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_164",
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -405,10 +405,10 @@
           "text": "At the end of a session, the default behavior requires ensuring the checkpoint exists and that the Current State, Open Problems, and Resume Instructions sections are up to date.",
           "context": "pi-ghosty agent session transcript",
           "date": "2026-04-30T15:17:55.489725+00:00",
-          "chunk_id": "pi-ghosty-personal_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "chunk_id": "pi-ghosty-personal_project:pi-ghosty/corroborator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -420,10 +420,10 @@
           "text": "During a session, the default behavior is to update the checkpoint file in place, preferring to rewrite current sections over appending narrative notes, and only appending a short dated note if a milestone or dead end is genuinely useful.",
           "context": "pi-ghosty agent session transcript",
           "date": "2026-04-30T15:17:55.479725+00:00",
-          "chunk_id": "pi-ghosty-personal_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "chunk_id": "pi-ghosty-personal_project:pi-ghosty/corroborator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -435,10 +435,10 @@
           "text": "At the start of a session, the default behavior is to run the 'checkpoint' command, read any existing checkpoint, and refresh it if it is stale or empty.",
           "context": "pi-ghosty agent session transcript",
           "date": "2026-04-30T15:17:55.469725+00:00",
-          "chunk_id": "pi-ghosty-personal_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "chunk_id": "pi-ghosty-personal_project:pi-ghosty/corroborator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -450,10 +450,10 @@
           "text": "The required sections to maintain in the checkpoint file are Current Goal, Current State, Decisions, Open Problems, and Resume Instructions, and they must be kept short and concrete.",
           "context": "pi-ghosty agent session transcript",
           "date": "2026-04-30T15:17:55.459725+00:00",
-          "chunk_id": "pi-ghosty-personal_project:pi-ghosty/coordinator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
+          "chunk_id": "pi-ghosty-personal_project:pi-ghosty/corroborator/001d4ec8-6fdd-428f-9b96-80d044dffe7c_160",
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -472,7 +472,7 @@
           "tags": [
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty",
-            "agent:coordinator"
+            "agent:corroborator"
           ],
           "entities": ""
         },
@@ -485,7 +485,7 @@
           "chunk_id": null,
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -500,7 +500,7 @@
           "chunk_id": null,
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -515,7 +515,7 @@
           "chunk_id": null,
           "proof_count": 1,
           "tags": [
-            "agent:coordinator",
+            "agent:corroborator",
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty"
           ],
@@ -532,7 +532,7 @@
           "tags": [
             "session:001d4ec8-6fdd-428f-9b96-80d044dffe7c",
             "project:pi-ghosty",
-            "agent:coordinator"
+            "agent:corroborator"
           ],
           "entities": ""
         }

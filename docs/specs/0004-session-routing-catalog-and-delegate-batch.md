@@ -10,15 +10,15 @@ pi-ghosty currently keeps **one in-memory session per peer** (`coder`, `research
 Additionally, deterministic filters like `cwd` are insufficient in practice (e.g. running pi-ghosty from `~` means many sessions share the same `cwd`), so routing requires **semantic understanding**.
 
 ## Goals
-1. Add a coordinator tool `delegate_batch` to delegate **multiple requests concurrently** under a configurable concurrency limit.
+1. Add a corroborator tool `delegate_batch` to delegate **multiple requests concurrently** under a configurable concurrency limit.
 2. Introduce a persistent **session catalog** (per peer) stored under the run directory.
 3. Make session selection (resume/new/compact/retire) **stateful** and **human-like**.
 4. Make semantic enrichment **mandatory** (not optional):
    - sessions are not eligible for routing unless they have an up-to-date semantic summary
    - routing decisions use an LLM call to choose the best session
-5. Keep the coordinator’s mental model unchanged:
-   - coordinator does not handle session IDs
-   - coordinator continues to delegate by role (peerName) with `task/context/expectedOutput`
+5. Keep the corroborator’s mental model unchanged:
+   - corroborator does not handle session IDs
+   - corroborator continues to delegate by role (peerName) with `task/context/expectedOutput`
 
 ## Non-goals (v1)
 - Embedding-based retrieval (vector search) for session selection
@@ -33,8 +33,8 @@ Additionally, deterministic filters like `cwd` are insufficient in practice (e.g
 - **Active session**: a session currently loaded in memory and/or executing (busy).
 
 ## User-facing behavior
-- Coordinator gains a new tool: `delegate_batch`.
-- Coordinator usage remains the same conceptually:
+- Corroborator gains a new tool: `delegate_batch`.
+- Corroborator usage remains the same conceptually:
   - decide which peer(s) should work
   - provide a good delegation envelope
   - call `delegate_batch`
@@ -77,7 +77,7 @@ Notes:
 ## Tooling
 
 ### `delegate_batch` tool
-A new coordinator-only tool.
+A new corroborator-only tool.
 
 **Input:**
 ```jsonc
@@ -95,7 +95,7 @@ A new coordinator-only tool.
 
 **Output:** an array of `PeerResult` objects (same shape as existing `delegate` result, but for each request), including the session identity actually used.
 
-The coordinator does not provide or receive session IDs as inputs. Session IDs may appear in results for debugging/tracing, but should not be required for coordinator logic.
+The corroborator does not provide or receive session IDs as inputs. Session IDs may appear in results for debugging/tracing, but should not be required for corroborator logic.
 
 ### Existing `delegate` tool
 May remain for single-task delegation; internally it can be implemented via the same routing/scheduling pipeline.
@@ -244,7 +244,7 @@ Add runtime trace events (JSONL) under existing traces:
 - `delegate_batch_start/end` (request count, parallelism, durations)
 
 ## Acceptance criteria
-- Coordinator can delegate two requests concurrently via `delegate_batch`.
+- Corroborator can delegate two requests concurrently via `delegate_batch`.
 - Peers can run concurrently (including two sessions of the same peer role).
 - Routing does not rely on `cwd` for correctness; semantic summaries and projectTag drive selection.
 - Every non-retired catalog entry has semantic `title/summary/tags`.

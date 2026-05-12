@@ -40,8 +40,8 @@ async function renderWorkflowStatus(runDir: string, limit = 5): Promise<string> 
 
 export function peerToolsExtensionFactory(config: GhostyConfig, agentName: string): ExtensionFactory {
   return (pi) => {
-    // Only coordinator needs this.
-    if (agentName !== "coordinator") return;
+    // Only corroborator needs this.
+    if (agentName !== "corroborator") return;
 
     // Tool only. Commands live under /ghosty in the extension so we don't have to chase
     // duplicate command registration paths.

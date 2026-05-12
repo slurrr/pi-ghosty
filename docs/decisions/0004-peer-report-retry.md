@@ -5,7 +5,7 @@ Approved
 
 ## Context
 Peer sessions are expected to end each delegated task by calling the `peer_report` tool so the host can return a compact,
-structured result to the coordinator.
+structured result to the corroborator.
 
 Small local models may occasionally omit the tool call, especially in fresh sessions or when a task ends with tool output.
 We want a lightweight recovery behavior that avoids adding complex routing or parsing logic.

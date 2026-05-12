@@ -1,13 +1,13 @@
 # Agents
 
-pi-ghosty runs one visible user-facing agent (**coordinator**) and several specialist peers. Prompt parts for each agent live in `peers/<agent>/*.md` and are appended in lexicographic order.
+pi-ghosty runs one visible user-facing agent (**corroborator**) and several specialist peers. Prompt parts for each agent live in `peers/<agent>/*.md` and are appended in lexicographic order.
 
 Canonical tool allowlists live in `pi-agent.json`.
 
 When you want to record evidence from a live loop before hardening the contract, use `../observations/`.
 
 ## Agents
-- `coordinator`: talks to the user; delegates to peers via the `delegate` tool.
+- `corroborator`: talks to the user; delegates to peers via the `delegate` tool.
 - `coder`: edits code and runs commands; reports via `peer_report`.
 - `researcher`: reads/searches locally; reports via `peer_report`.
 - `reviewer`: reviews for correctness/safety; reports via `peer_report`.

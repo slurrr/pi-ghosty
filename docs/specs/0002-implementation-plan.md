@@ -1,10 +1,10 @@
 # Spec: V1 Implementation Plan
 
 ## Problem
-Implement a v1 single-model, multi-peer system (Coordinator + specialist peers) using pi-mono primitives.
+Implement a v1 single-model, multi-peer system (Corroborator + specialist peers) using pi-mono primitives.
 
 Primary goals:
-- Delegation that feels seamless (user talks to the Coordinator; peers are invisible unless asked).
+- Delegation that feels seamless (user talks to the Corroborator; peers are invisible unless asked).
 - Tool-first structured peer results (host-owned schema; model fills it by calling a tool).
 - Lightweight safety + trace/persistence rooted outside the repo.
 
@@ -13,14 +13,14 @@ Implemented:
 - Config + env loading (`pi-agent.json`, `src/config/*`, `src/env.ts`)
 - Prompt-part assembly from `peers/<peer>/*.md` (`src/prompts/loadPeerPromptParts.ts`)
 - vLLM-backed `AgentSession` creation (`src/pi/createSession.ts`)
-- Coordinator + peer session lifecycle + delegation via a `delegate` tool (`src/runtime/*`)
+- Corroborator + peer session lifecycle + delegation via a `delegate` tool (`src/runtime/*`)
 - Structured peer result reporting via `peer_report` tool call (`src/runtime/peerReportTool.ts`) + validation (`src/runtime/contracts.ts`)
 - Fallback when `peer_report` is missing: retry once, then use last assistant text (`src/runtime/ghostyRuntime.ts`)
 - Tool allowlist gating per agent (`src/extensions/toolGatingExtension.ts`)
 - Argument-level tool safety (`src/extensions/toolPolicyExtension.ts`)
 - Runtime JSONL trace + minimal artifacts (`src/logging/jsonlTrace.ts`, `src/artifacts/store.ts`)
 - Hindsight recall/retain hooks (`src/extensions/memoryExtension.ts`)
-- PI TUI entrypoint hosted on coordinator session (`src/tui/startTui.ts`, `src/index.ts`)
+- PI TUI entrypoint hosted on corroborator session (`src/tui/startTui.ts`, `src/index.ts`)
 - Debug commands in TUI (`/system`, `/system guidelines`) via extension (`src/extensions/systemDebugExtension.ts`)
 - Explicit peer addressing (`@coder`, etc.) via extension (`src/extensions/explicitPeerAddressingExtension.ts`)
 
@@ -28,7 +28,7 @@ Implemented:
 This spec documents the v1 shape we’re building (and the choices that keep it lightweight).
 
 In scope:
-- Coordinator runtime
+- Corroborator runtime
 - Peer session lifecycle
 - Structured delegation contract
 - Tool safety policy (at least: shell timeout, file path boundaries)
@@ -45,8 +45,8 @@ Out of scope:
 
 ## Requirements
 ### Runtime core
-- The user talks only to the Coordinator.
-- The Coordinator can delegate to `coder`, `researcher`, `reviewer`, and `memory`.
+- The user talks only to the Corroborator.
+- The Corroborator can delegate to `coder`, `researcher`, `reviewer`, and `memory`.
 - Peer sessions are persistent and resumable.
 - Delegation is sequential in v1.
 - The runtime must have explicit spawn-vs-resume behavior:
@@ -55,7 +55,7 @@ Out of scope:
   - allow explicit reset later without redesign
 
 ### Delegation contract
-- The Coordinator must hand peers a compact structured task envelope (host-defined shape).
+- The Corroborator must hand peers a compact structured task envelope (host-defined shape).
 - A peer returns a compact structured result (host-defined shape) by calling a tool.
 - The host runtime owns the schema and validation; the model only fills fields.
 - Tool-first reporting:
@@ -80,7 +80,7 @@ Out of scope:
   - delegation start/end
   - peer used
   - tool call/result metadata
-  - final coordinator reply
+  - final corroborator reply
 - Add a minimal artifact store for reusable outputs worth re-injecting.
 
 ### Interfaces
@@ -118,7 +118,7 @@ Key modules:
 - `src/extensions/toolGatingExtension.ts`
   - remain the final config gate
 - `src/runtime/*`
-  - own coordinator behavior and peer orchestration
+  - own corroborator behavior and peer orchestration
 
 ## Sequencing
 For future work, prefer this order:
@@ -128,7 +128,7 @@ For future work, prefer this order:
 
 ## Acceptance Criteria
 Met:
-- The Coordinator can delegate to a peer and reuse that peer session on subsequent tasks.
+- The Corroborator can delegate to a peer and reuse that peer session on subsequent tasks.
 - Peers report results via `peer_report` with a host-validated schema, with a graceful fallback path.
 - Runtime writes JSONL traces and stores minimal artifacts under an out-of-repo runDir (default: `~/runs/pi-ghosty`).
   - Tool policy hardening exists beyond tool-name allowlists.
@@ -141,8 +141,8 @@ Met:
 - Expected total: about `1.2k–1.7k` LOC
 
 ## Open Questions
-- How explicit the coordinator’s delegation trigger should be in v1 (once structured results exist):
+- How explicit the corroborator’s delegation trigger should be in v1 (once structured results exist):
   - prompt-driven with a strict output contract
-  - a dedicated delegation tool exposed only to the coordinator
+  - a dedicated delegation tool exposed only to the corroborator
 - Whether runtime traces should include full peer replies or only summarized records.
 - Whether the first PI TUI cut should be shipped in v1 or immediately after Telegram runtime parity.

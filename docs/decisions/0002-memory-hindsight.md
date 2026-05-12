@@ -7,7 +7,7 @@ Allowed values: `Pending`, `Approved`, `Superseded`
 
 ## Context
 The multi-peer system needs **long-term persistence** to be useful and trustworthy:
-- The Coordinator must remember prior decisions, constraints, and “what worked / what failed”.
+- The Corroborator must remember prior decisions, constraints, and “what worked / what failed”.
 - Specialist peers (especially `coder` and `researcher`) need persistent context and **active recall** to avoid “light-duty only”
   behavior.
 - Purely persistent chat logs (even with compaction) are not sufficient: they bloat context windows, drift, and don’t
@@ -22,7 +22,7 @@ We want a memory mechanism that:
 Candidate: `vectorize-io/hindsight` (MIT) – exposes an HTTP API and provides clients for Python and TypeScript.
 
 ## Decision
-Integrate **Hindsight** as the long-term memory subsystem for the Coordinator + peers.
+Integrate **Hindsight** as the long-term memory subsystem for the Corroborator + peers.
 
 High-level design:
 - Run Hindsight as a sidecar service (local) with HTTP API (default `http://localhost:8888`).
@@ -48,7 +48,7 @@ Retention strategy (v1):
   avoiding noisy per-session scopes unless explicitly desired.
 
 Document ID + tags strategy (v1):
-- Retain **one transcript document per agent session** (Coordinator + each peer), each with its own stable `document_id`.
+- Retain **one transcript document per agent session** (Corroborator + each peer), each with its own stable `document_id`.
 - Tag each retained document with at least:
   - `project:<name>` (e.g., `project:pi-agent`)
   - `agent:<name>` (e.g., `agent:coder`)

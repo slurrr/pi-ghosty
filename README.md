@@ -48,7 +48,7 @@ npm run smoke:pi-ext
 ## scripts
 
 - `npm run memory -- --all` (print latest memory receipts)
-- `npm run memory -- --agent coordinator --full`
+- `npm run memory -- --agent corroborator --full`
 - `npm run workflow:meta` (all-time workflow review aggregation)
 - `npm run workflow:meta:weekly` (cron-friendly weekly wrapper)
 
@@ -59,7 +59,7 @@ config: `pi-agent.json` (override with `GHOSTY_AGENT_CONFIG_PATH`)
 memory defaults use split banks:
 - procedural: `pi-ghosty-procedural`
 - personal: `pi-ghosty-personal`
-- coordinator recalls personal first, then procedural
+- corroborator recalls personal first, then procedural
 - working peers recall procedural only
 
 ## docs

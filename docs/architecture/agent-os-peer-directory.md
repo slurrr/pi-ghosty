@@ -6,7 +6,7 @@ This is the living directory for specialized peers in the `pi-ghosty` Agent OS. 
 
 | Peer Name | Primary Model | Thinking | Tools | Responsibility |
 | :--- | :--- | :--- | :--- | :--- |
-| **Coordinator** | `gemini-3-flash-preview` | Medium | `delegate`, `bash`, `read` | Master planning, problem definition, traffic control. Uses AI Studio API to bypass 1 RPM throttle. |
+| **Corroborator** | `gemini-3-flash-preview` | Medium | `delegate`, `bash`, `read` | Master planning, problem definition, traffic control. Uses AI Studio API to bypass 1 RPM throttle. |
 | **Coder** | `gpt-5.3-codex` | High | `edit`, `write`, `bash` | High-precision implementation. Uses OpenAI Plus Quota. |
 | **Researcher** | `gpt-5.4-mini` | Medium | `web_search`, `read` | Info gathering. Uses OpenAI Plus Quota to save Gemini credits. |
 | **Reviewer** | `gpt-5.4-mini` | Medium | `read`, `grep` | PR review and checklist. Uses OpenAI Plus Quota. |
@@ -60,6 +60,6 @@ This is the living directory for specialized peers in the `pi-ghosty` Agent OS. 
 
 ## Discussion Notes: Model Default Optimization
 - **Goal**: Fully utilize OpenAI Plus (OAuth) before hitting paid Gemini credits.
-- **Coordinator**: Needs speed + planning capability. Gemini Flash is likely the sweet spot.
+- **Corroborator**: Needs speed + planning capability. Gemini Flash is likely the sweet spot.
 - **High-Turn Peers**: Shift Researcher/Reviewer to OpenAI "Mini" models to minimize credit burn.
 - **Low-Utility Peers**: Offload to local vLLM (Gemma/Omnicoder) for maintenance and summarization.

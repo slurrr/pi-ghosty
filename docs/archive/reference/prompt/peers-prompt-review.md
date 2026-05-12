@@ -7,7 +7,7 @@
 ├────────────────────┼───────────────────────────────────────────┼───────────┤                                                                           
 │ All role prompts   │ Missing explicit peer_report requirements │ 🔴 HIGH   │                                                                           
 ├────────────────────┼───────────────────────────────────────────┼───────────┤                                                                           
-│ Coordinator prompt │ No clear delegation triggers              │ 🔴 HIGH   │                                                                           
+│ Corroborator prompt │ No clear delegation triggers              │ 🔴 HIGH   │                                                                           
 ├────────────────────┼───────────────────────────────────────────┼───────────┤                                                                           
 │ Reviewer prompt    │ Vague on checklist format                 │ 🟡 MEDIUM │                                                                           
 ├────────────────────┼───────────────────────────────────────────┼───────────┤                                                                           

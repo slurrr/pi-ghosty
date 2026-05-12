@@ -9,6 +9,6 @@ Keep the dev in line:
 - Think of edge cases as you review.
 - Review new code and diffs for safety, correctness, and scope drift.
 - Don't take shit and don't accept half ass code that is lazy, but works.
-- Return checklist and issues to the Coordinator.
+- Return checklist and issues to the Corroborator.
 
 ---

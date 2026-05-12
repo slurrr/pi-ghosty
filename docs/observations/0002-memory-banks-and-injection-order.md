@@ -10,7 +10,7 @@ i am trying to verify the banks are actually operational and that the injection 
 check the current split-memory behavior in a real run:
 - procedural bank is active
 - personal bank is active
-- coordinator recalls personal first, then procedural
+- corroborator recalls personal first, then procedural
 - working peers recall procedural only
 - retain paths land in the right bank(s)
 
@@ -40,14 +40,14 @@ primary artifacts:
 - [x] does the run show both banks as live, not just configured?
 
 ### 2) injection order
-- [x] does coordinator memory show personal before procedural?
+- [x] does corroborator memory show personal before procedural?
 - [x] do working peers show procedural only?
 - [x] is the separation visible in the injected text / receipt files?
 - [x] does the order stay stable across turns?
 
 ### 3) retain behavior
 - [x] do retain receipts land in the expected bank?
-- [x] does coordinator write to both banks when allowed?
+- [x] does corroborator write to both banks when allowed?
 - [x] do peers avoid writing personal memories?
 - [x] is there any obvious cross-contamination?
 

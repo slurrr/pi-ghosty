@@ -7,7 +7,7 @@ export interface DelegationJobRecord {
   version: 1;
   jobId: string;
   peerName: DelegationLaunch["peerName"];
-  coordinatorSessionId: string;
+  corroboratorSessionId: string;
   peerSessionId: string;
   sessionState: DelegationLaunch["sessionState"];
   delegationMessage: string;
@@ -60,7 +60,7 @@ export interface CreateDelegationJobFilesArgs {
   peerSessionDir: string;
   peerSessionPath: string;
   launch: DelegationLaunch;
-  coordinatorSessionId: string;
+  corroboratorSessionId: string;
   model?: string;
   launcher: "tmux" | "headless";
   keepOpen: boolean;
@@ -164,7 +164,7 @@ export function createDelegationJobFiles(args: CreateDelegationJobFilesArgs): De
     version: 1,
     jobId: args.launch.jobId,
     peerName: args.launch.peerName,
-    coordinatorSessionId: args.coordinatorSessionId,
+    corroboratorSessionId: args.corroboratorSessionId,
     peerSessionId: args.launch.sessionId,
     sessionState: args.launch.sessionState,
     delegationMessage: args.launch.delegationMessage,

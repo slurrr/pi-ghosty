@@ -12,7 +12,7 @@ specialized peers running on a single machine with a single local model (low VRA
 Constraints and preferences:
 - Single local model served by vLLM at `http://localhost:8002` (initial model: `omnicoder-9b`).
 - Multi-agent behavior is achieved via *profiles* (different system prompts + toolsets), not by swapping models.
-- The main “Coordinator” agent is the only user-facing agent (PI TUI + Telegram messaging for v1).
+- The main “Corroborator” agent is the only user-facing agent (PI TUI + Telegram messaging for v1).
 - Specialist peers directly call tools; tool safety is enforced by config, not by ad-hoc logic in the orchestrator.
 - v1 can be sequential; parallel tool calls are a future goal.
 - We want to leverage pi-mono packages as much as possible, and keep our layer thin and composable.
@@ -20,7 +20,7 @@ Constraints and preferences:
 - Telegram policy for v1 is single-user (explicit allowlist), to keep the gateway simple and safe.
 - Config lives in the agent-tree root and defines global defaults + nested agents (tools, skills, sampling, overrides).
 - Prompts are not defined in config. Each peer has a folder of `.md` prompt parts assembled by a system builder module.
-- `.pi/SYSTEM.md` is the primary shared prompt building block used by all agents (Coordinator + peers).
+- `.pi/SYSTEM.md` is the primary shared prompt building block used by all agents (Corroborator + peers).
 
 ## Decision
 Adopt a **single-model, multi-peer** architecture built on pi-mono components:
@@ -30,20 +30,20 @@ Adopt a **single-model, multi-peer** architecture built on pi-mono components:
      sampling params, skills).
    - Store peer definitions under `peers/` (not `agents/`) to emphasize “profiles/roles” rather than separate models.
 
-2. **Coordinator-Orchestrated Sessions**
-   - The Coordinator is the only agent the user interacts with.
-   - The Coordinator can delegate tasks to specialist peers by spawning fresh peer sessions using the same vLLM model.
+2. **Corroborator-Orchestrated Sessions**
+   - The Corroborator is the only agent the user interacts with.
+   - The Corroborator can delegate tasks to specialist peers by spawning fresh peer sessions using the same vLLM model.
 
 3. **Config-Gated Tool Execution**
    - Tool execution is gated by a config file (`pi-agent.json`) that defines:
-     - agent tree (Coordinator + peers)
+     - agent tree (Corroborator + peers)
      - per-agent tool allowlists / permissions
      - per-agent sampling parameters
      - optional skills
    - The orchestrator routes tool calls but does not “hand-roll” allowlist enforcement; the tool layer consults config.
 
 4. **Telegram Gateway (v1)**
-   - Add a light Telegram interface for communicating with the Coordinator (in addition to local PI TUI).
+   - Add a light Telegram interface for communicating with the Corroborator (in addition to local PI TUI).
    - Telegram is treated as an IO channel, not a separate agent.
 
 5. **Execution Mode**
@@ -53,7 +53,7 @@ Adopt a **single-model, multi-peer** architecture built on pi-mono components:
 ## Consequences
 Positive:
 - Matches the “one model, many roles” vision while keeping VRAM and complexity low.
-- Allows focused peer prompts and contexts (context isolation), reducing prompt bloat for the Coordinator.
+- Allows focused peer prompts and contexts (context isolation), reducing prompt bloat for the Corroborator.
 - Centralizes safety decisions in config, supporting iterative trust-building (gradually add tools / permissions).
 
 Tradeoffs / Costs:

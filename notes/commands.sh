@@ -71,10 +71,10 @@ Runtime delegations (latest):
    tail -F "$(ls -t ~/runs/pi-ghosty/data/traces/runtime/*.jsonl | head -n 1)"                                                  
  ```                                                                                                                            
                                                                                                                                 
- Coordinator (latest):                                                                                                          
+ Corroborator (latest):                                                                                                          
                                                                                                                                 
  ```bash                                                                                                                        
-   tail -F "$(ls -t ~/runs/pi-ghosty/data/traces/coordinator/*.jsonl | head -n 1)"                                              
+   tail -F "$(ls -t ~/runs/pi-ghosty/data/traces/corroborator/*.jsonl | head -n 1)"                                              
  ```                                                                                                                            
                                                                                                                                 
  Researcher (latest):                                                                                                           

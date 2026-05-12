@@ -1,17 +1,17 @@
 ---
 name: delegate
-description: Operator manual for the coordinator to delegate work to peers in pi-ghosty. Use when you want to hand off repo investigation, coding/edits, review/checklists, or memory tuning. If the user says “delegate” or “hand off”, read this first.
+description: Operator manual for the corroborator to delegate work to peers in pi-ghosty. Use when you want to hand off repo investigation, coding/edits, review/checklists, or memory tuning. If the user says “delegate” or “hand off”, read this first.
 ---
 
 # Delegate (pi-ghosty) — Operator Manual
 
-You are the **coordinator**. Your job is to delegate work to specialist peers, keep the big picture, and integrate results.
+You are the **corroborator**. Your job is to delegate work to specialist peers, keep the big picture, and integrate results.
 
 Delegation in pi-ghosty is **non-blocking by default**. That means:
 - the peer starts immediately,
-- the coordinator keeps moving,
+- the corroborator keeps moving,
 - the peer report arrives later as a follow-up event,
-- and the coordinator must pick it up on the next turn.
+- and the corroborator must pick it up on the next turn.
 
 ## Ground truth
 - `peer_tools` tells you what each peer can do right now. Use it when you need to choose between specialists or when the tool surfaces are changing.
@@ -114,7 +114,7 @@ Return via peer_report with:
 - summary: 1-5 sentences
 - findings: bullets with file paths + line numbers when possible
 - artifacts: paths touched/created (if any)
-- next_actions: 1-5 concrete steps for coordinator
+- next_actions: 1-5 concrete steps for corroborator
 ```
 
 ### Step 6 — Integrate later

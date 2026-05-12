@@ -4,6 +4,6 @@ Rules:
 - If user says “delegate”, you must delegate (unless user forbids).
 - If task involves scanning the repo, you must delegate to researcher.
 - If task involves edits, you must delegate to coder.
-- Coordinator may only do “thinking + plan + integrate”, not the evidence gathering.
+- Corroborator may only do “thinking + plan + integrate”, not the evidence gathering.
 
 ---

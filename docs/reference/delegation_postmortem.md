@@ -2,16 +2,16 @@
 
 This is a postmortem for the delegation work that looked broken while it was running.
 The main lesson is simple and annoying as hell
-**non-blocking delegation** is the right default, but it only works if the coordinator treats peer results as eventually consistent and never assumes the answer will arrive inside the same turn.
+**non-blocking delegation** is the right default, but it only works if the corroborator treats peer results as eventually consistent and never assumes the answer will arrive inside the same turn.
 
 ## What the user asked for
 
 The intended behavior was:
 
-- launch peer work without blocking the coordinator,
-- keep the coordinator free to continue doing other work,
+- launch peer work without blocking the corroborator,
+- keep the corroborator free to continue doing other work,
 - persist the peer response durably,
-- surface the peer response back into the coordinator session eventually and visibly,
+- surface the peer response back into the corroborator session eventually and visibly,
 - and stop the peer once the useful result was already produced.
 
 One important correction
@@ -27,22 +27,22 @@ The extension renderers in `.pi/extensions/ghosty/index.ts:1768-1784` and `.pi/e
 So the prompt was not missing; it was just collapsed in the normal view.
 That made the flow look more broken than it was.
 
-### 2) The coordinator did not see peer results soon enough
+### 2) The corroborator did not see peer results soon enough
 
 The current injection path in `.pi/extensions/ghosty/index.ts:1387-1394` uses `pi.sendMessage(..., { triggerTurn: true, deliverAs: "followUp" })`.
-That is asynchronous and best-effort, but it does **not** make the coordinator see the peer result immediately while the coordinator is still in its current turn.
+That is asynchronous and best-effort, but it does **not** make the corroborator see the peer result immediately while the corroborator is still in its current turn.
 
 That is the core visibility bug:
 
 - the peer can finish,
 - the result can be queued,
-- but the coordinator is still busy,
+- but the corroborator is still busy,
 - so the result arrives only after the turn ends.
 
 That is not a minor lag. that is **too late period** if the current decision depends on the peer output.
 
 The hard rule we need is this
-if the coordinator needs the peer result to make the next move, that delegation belongs in a waiting path or a later turn. if it does not need the result immediately, then non-blocking is fine and should stay.
+if the corroborator needs the peer result to make the next move, that delegation belongs in a waiting path or a later turn. if it does not need the result immediately, then non-blocking is fine and should stay.
 
 ### 3) The peer report was not persisted in the way the user expected
 
@@ -87,8 +87,8 @@ That is an important UX failure mode: the feature existed, but it was not obviou
 
 ## Failure modes to inspect next
 
-1. **Coordinator visibility lag**
-   - The result injection path only becomes visible after the coordinator turn ends.
+1. **Corroborator visibility lag**
+   - The result injection path only becomes visible after the corroborator turn ends.
    - Inspect the follow-up message delivery path and whether it should use a true durable session entry first.
 
 2. **Durable report shape**
@@ -108,7 +108,7 @@ That is an important UX failure mode: the feature existed, but it was not obviou
    - Inspect the tool renderers so the full envelope is easier to discover without forcing expansion.
 
 6. **Session/report alignment**
-   - The peer report exists as a structured result, but the report artifact and the visible coordinator session do not yet line up in the way the user expected.
+   - The peer report exists as a structured result, but the report artifact and the visible corroborator session do not yet line up in the way the user expected.
    - Inspect the injection path so the report is both durable and visible at the right time.
 
 ## Practical takeaway
@@ -126,7 +126,7 @@ The thing that has to harden is the contract around it
 
 - if you need peer output to decide the next step, do not delegate inside that same decision branch,
 - if you do delegate, keep moving and treat the result as a future event,
-- if the result matters, make the follow-up explicit instead of hoping the coordinator magically waits,
+- if the result matters, make the follow-up explicit instead of hoping the corroborator magically waits,
 - and once the useful answer exists, stop burning tokens on the rest of the chatter.
 
 That is the set of failure modes that should be fixed before trusting this flow again.

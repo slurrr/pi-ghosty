@@ -15,7 +15,7 @@ tags:
 Golden shape to compare against:
 
 ```
-{  "async": true,  "items": [    {      "content": "only the new delta if using append",      "document_id": "project:pi-ghosty/coordinator/...",      "update_mode": "append",      "tags": ["project:pi-ghosty", "agent:coordinator"]    }  ]}
+{  "async": true,  "items": [    {      "content": "only the new delta if using append",      "document_id": "project:pi-ghosty/corroborator/...",      "update_mode": "append",      "tags": ["project:pi-ghosty", "agent:corroborator"]    }  ]}
 ```
 2. Log the exact client payload before send.  
 	Do not log your high-level object. Log the final serialized JSON body and request URL at the transport layer. For each retain call, capture:
@@ -57,7 +57,7 @@ So the sequence should be:
 - inspect raw facts only
 - only after retain separation is working, re-enable observations
 5. Run a minimal bank-isolation test with a payload that should be obviously personal.  
-	Do not use a mixed coordinator transcript first. Use a tiny input that should force a personal extraction win.
+	Do not use a mixed corroborator transcript first. Use a tiny input that should force a personal extraction win.
 
 Example:
 
@@ -90,7 +90,7 @@ Expected:
 Do not send full history again when testing append. That muddies the result.
 
 8. Check whether you are accidentally testing “same input, same doc id, same tags, same everything.”  
-	Your logs show the same logical document path in both banks: `project:pi-ghosty/coordinator/50687938-...`, and both runs fall back to full retain on that document.  
+	Your logs show the same logical document path in both banks: `project:pi-ghosty/corroborator/50687938-...`, and both runs fall back to full retain on that document.  
 	That is fine mechanically because banks are separate, but it means mission text is doing all the separation work. For debugging, reduce variables:
 - keep same content, different banks
 - same content, different document\_ids
@@ -139,6 +139,6 @@ If you want a compact operator script next, use this exact sequence:
 5. list raw memories again
 6. fix transport until warnings disappear
 7. re-enable observations
-8. rerun with real coordinator transcript
+8. rerun with real corroborator transcript
 
 The highest-probability issue remains transport shape, not mission quality. Your single-bank test already proved the mission approach can work.

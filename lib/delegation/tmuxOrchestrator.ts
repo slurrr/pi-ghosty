@@ -79,12 +79,12 @@ function currentPaneId(): string {
   return res.stdout.trim();
 }
 
-function workerSessionNameForCoordinator(coordinatorSessionId: string): string {
-  return `ghosty-workers-${coordinatorSessionId.slice(0, 8)}`;
+function workerSessionNameForCorroborator(corroboratorSessionId: string): string {
+  return `ghosty-workers-${corroboratorSessionId.slice(0, 8)}`;
 }
 
-function warRoomStatePath(runDir: string, coordinatorSessionId: string): string {
-  return resolve(runDir, "data", "war-room", `${coordinatorSessionId}.json`);
+function warRoomStatePath(runDir: string, corroboratorSessionId: string): string {
+  return resolve(runDir, "data", "war-room", `${corroboratorSessionId}.json`);
 }
 
 function configureWorkerSession(sessionName: string): void {
@@ -104,16 +104,16 @@ function ensureWorkerSession(sessionName: string, workDir: string): void {
   configureWorkerSession(sessionName);
 }
 
-function statusPaneCommand(boardScriptPath: string, coordinatorSessionId: string): string {
-  return `GHOSTY_COORDINATOR_SESSION_ID=${shellQuote(coordinatorSessionId)} node ${shellQuote(boardScriptPath)}`;
+function statusPaneCommand(boardScriptPath: string, corroboratorSessionId: string): string {
+  return `GHOSTY_CORROBORATOR_SESSION_ID=${shellQuote(corroboratorSessionId)} node ${shellQuote(boardScriptPath)}`;
 }
 
 function workerPaneCommand(workerSessionName: string): string {
   return `unset TMUX; exec tmux attach-session -t ${shellQuote(workerSessionName)}`;
 }
 
-function ensureWarRoomPanes(workDir: string, workerSessionName: string, boardScriptPath: string, coordinatorSessionId: string): WarRoomLayout {
-  const coordinatorPaneId = currentPaneId();
+function ensureWarRoomPanes(workDir: string, workerSessionName: string, boardScriptPath: string, corroboratorSessionId: string): WarRoomLayout {
+  const corroboratorPaneId = currentPaneId();
 
   const splitWorker = tmux([
     "split-window",
@@ -150,8 +150,8 @@ function ensureWarRoomPanes(workDir: string, workerSessionName: string, boardScr
   const statusPaneId = splitStatus.stdout.trim();
 
   reattachWorkerPane(workerPaneId, workerSessionName, workDir);
-  reattachStatusPane(statusPaneId, boardScriptPath, coordinatorSessionId, workDir);
-  tmux(["select-pane", "-t", coordinatorPaneId]);
+  reattachStatusPane(statusPaneId, boardScriptPath, corroboratorSessionId, workDir);
+  tmux(["select-pane", "-t", corroboratorPaneId]);
 
   return {
     workerSessionName,
@@ -165,28 +165,28 @@ function reattachWorkerPane(workerPaneId: string, workerSessionName: string, wor
   if (res.status !== 0) throw new Error(`tmux respawn-pane worker failed: ${(res.stderr || res.stdout).trim()}`);
 }
 
-function reattachStatusPane(statusPaneId: string, boardScriptPath: string, coordinatorSessionId: string, workDir: string): void {
-  const res = tmux(["respawn-pane", "-k", "-t", statusPaneId, "-c", workDir, statusPaneCommand(boardScriptPath, coordinatorSessionId)]);
+function reattachStatusPane(statusPaneId: string, boardScriptPath: string, corroboratorSessionId: string, workDir: string): void {
+  const res = tmux(["respawn-pane", "-k", "-t", statusPaneId, "-c", workDir, statusPaneCommand(boardScriptPath, corroboratorSessionId)]);
   if (res.status !== 0) throw new Error(`tmux respawn-pane status failed: ${(res.stderr || res.stdout).trim()}`);
 }
 
 export function ensureWarRoomLayout(args: {
-  coordinatorSessionId: string;
+  corroboratorSessionId: string;
   runDir: string;
   workDir: string;
   boardScriptPath: string;
 }): WarRoomLayout {
-  const { coordinatorSessionId, runDir, workDir, boardScriptPath } = args;
-  const sessionName = workerSessionNameForCoordinator(coordinatorSessionId);
+  const { corroboratorSessionId, runDir, workDir, boardScriptPath } = args;
+  const sessionName = workerSessionNameForCorroborator(corroboratorSessionId);
   ensureWorkerSession(sessionName, workDir);
 
-  const statePath = warRoomStatePath(runDir, coordinatorSessionId);
+  const statePath = warRoomStatePath(runDir, corroboratorSessionId);
   const existing = readJson<WarRoomState>(statePath);
   if (existing && paneExists(existing.workerPaneId) && paneExists(existing.statusPaneId)) {
     return existing;
   }
 
-  const created = ensureWarRoomPanes(workDir, sessionName, boardScriptPath, coordinatorSessionId);
+  const created = ensureWarRoomPanes(workDir, sessionName, boardScriptPath, corroboratorSessionId);
   atomicWriteJson(statePath, {
     version: 1,
     ...created,

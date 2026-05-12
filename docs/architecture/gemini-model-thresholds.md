@@ -20,7 +20,7 @@ This document tracks the context and cost thresholds for Gemini models used in t
 - **Context Ceiling**: 1.0M tokens.
 - **Cost**: ~$0.10 / 1M tokens.
 - **Thinking Support**: Yes (Native thought block).
-- **Best For**: Coordinator (Budget), Reviewer. Highly stable.
+- **Best For**: Corroborator (Budget), Reviewer. Highly stable.
 
 ## Gemini 3.0 Flash Preview (The "Master Planner")
 - **Context Ceiling**: 1.0M tokens.
@@ -28,7 +28,7 @@ This document tracks the context and cost thresholds for Gemini models used in t
   - Input: $0.50 / 1M tokens.
   - Output (inc. thinking): $3.00 / 1M tokens.
 - **Thinking Support**: Yes (Native frontier reasoning).
-- **Best For**: Coordinator (Default). Best at tool-call precision and planning.
+- **Best For**: Corroborator (Default). Best at tool-call precision and planning.
 
 ## Gemini 3.1 Pro Preview (The "Architect")
 - **Context Ceiling**: 2.0M tokens.
@@ -41,5 +41,5 @@ This document tracks the context and cost thresholds for Gemini models used in t
 ---
 
 ## Strategy Notes
-- **Threshold Awareness**: The Coordinator should monitor prompt size. When approaching 128k, consider compactions or delegating to fresh peer sessions to reset the cost threshold.
+- **Threshold Awareness**: The Corroborator should monitor prompt size. When approaching 128k, consider compactions or delegating to fresh peer sessions to reset the cost threshold.
 - **Thinking Logic**: Gemini 2.0+ models support thinking tokens natively. If the TUI does not show the toggle, it may require `enable_thinking: true` in the `extra_body` of the request.
