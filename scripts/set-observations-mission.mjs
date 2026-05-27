@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { HindsightClient } from "@vectorize-io/hindsight-client";
+import { syncHindsightHighlights } from "./_highlights_sync.mjs";
 
 function usage(exitCode = 1) {
   console.error(`Usage:
@@ -25,6 +26,7 @@ try {
     observationsMission: mission,
   });
   console.log(JSON.stringify(result, null, 2));
+  syncHindsightHighlights({ banks: [bankId], baseUrl });
 } catch (err) {
   console.error(err?.stack || err?.message || String(err));
   process.exit(1);
