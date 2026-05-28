@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "hindsightBaseUrl": "http://localhost:8888",
+  "banks": {
+    "procedural": {
+      "bankId": "pi-ghosty-procedural",
+      "updates": {
+        "retain_extraction_mode": "concise",
+        "retain_mission": "Retain only facts about projects, tasks, systems, tools, workflows, architecture, decisions, and troubleshooting. Do not retain Seth’s personal preferences, habits, routines, communication style, or other personal facts.",
+        "observations_mission": "Observe only facts about projects, tasks, systems, tools, workflows, architecture, decisions, and troubleshooting. Never observe Seth’s personal preferences, habits, routines, communication style, or other personal facts.",
+        "consolidation_llm_batch_size": 8,
+        "consolidation_max_memories_per_round": 100,
+        "consolidation_source_facts_max_tokens": -1,
+        "consolidation_source_facts_max_tokens_per_observation": 256,
+        "max_observations_per_scope": -1
+      }
+    },
+    "personal": {
+      "bankId": "pi-ghosty-personal",
+      "updates": {
+        "retain_extraction_mode": "concise",
+        "retain_mission": "Retain only facts about Seth as a person: preferences, likes and dislikes, habits, routines, communication style, interaction rules, and personal constraints. Do not retain anything about projects, tasks, systems, tools, code, memory, agent behavior, or other work facts.",
+        "observations_mission": "Observe only facts about Seth as a person: preferences, habits, routines, communication style, and personal constraints. Never observe project, task, system, tool, code, or agent facts.",
+        "consolidation_llm_batch_size": 8,
+        "consolidation_max_memories_per_round": 100,
+        "consolidation_source_facts_max_tokens": -1,
+        "consolidation_source_facts_max_tokens_per_observation": 256,
+        "max_observations_per_scope": -1
+      }
+    }
+  }
+}

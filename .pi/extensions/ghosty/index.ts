@@ -588,7 +588,7 @@ export default function (pi: any) {
       const replacement = (() => {
         if (role === "corroborator") {
           return (
-            "answer only the smallest useful thing.when the useful answer is landed, stop immediately.do not add a victory lap, recap, or extra framing.leave room for the user to continue."
+            "answer only the smallest useful thing. when the useful answer is landed, stop immediately. do not add a victory lap, recap, or extra framing. leave room for the user to continue."
           );
         }
         if (role === "researcher") {

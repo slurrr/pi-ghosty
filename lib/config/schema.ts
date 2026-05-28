@@ -29,18 +29,27 @@ const memoryTimestampModeSchema = z.enum(["now", "message", "session", "none"]);
 
 export const memoryRecallSchema = z.object({
   maxTokens: z.number().int().positive().default(2048),
+  bankMaxTokens: z.object({
+    personal: z.number().int().nonnegative().default(2048),
+    procedural: z.number().int().nonnegative().default(2048),
+  }).default({
+    personal: 2048,
+    procedural: 2048,
+  }),
   budget: memoryBudgetSchema.default("mid"),
   tagsMatch: memoryTagMatchSchema.default("all"),
   types: z.array(z.string().min(1)).default(["observation", "world", "experience"]),
-  maxFacts: z.number().int().positive().default(30),
+  // Hard cap on number of injected fact lines. Set to -1 or null for unlimited.
+  // (Token budgets are the primary limiter; this is a belt-and-suspenders guard.)
+  maxFacts: z.union([z.number().int().min(-1), z.null()]).default(100),
   queryMaxChars: z.number().int().positive().optional(),
   queryMaxTokens: z.number().int().positive().max(500).default(420),
   queryTimestampMode: z.enum(["now", "message", "session", "custom"]).default("now"),
   queryTimestampValue: z.string().datetime().optional(),
   includeSourceFacts: z.boolean().default(false),
-  includeSourceFactsMaxTokens: z.number().int().positive().default(4096),
+  includeSourceFactsMaxTokens: z.number().int().nonnegative().default(4096),
   includeChunks: z.boolean().default(false),
-  includeChunksMaxTokens: z.number().int().positive().default(8192),
+  includeChunksMaxTokens: z.number().int().nonnegative().default(8192),
   async: z.boolean().default(true),
 });
 
@@ -104,7 +113,7 @@ export const memoryBankSchema = z.object({
   hindsight: hindsightBankConfigSchema.optional(),
 });
 
-export const memoryBanksSchema = z.object({
+const memoryBanksObjectSchema = z.object({
   procedural: memoryBankSchema.default({
     bankId: "pi-ghosty-procedural",
     recallTags: [],
@@ -119,7 +128,9 @@ export const memoryBanksSchema = z.object({
     observationScopes: [],
     retainContent: "conversation",
   }),
-}).default({
+});
+
+export const memoryBanksSchema = memoryBanksObjectSchema.default({
   procedural: {
     bankId: "pi-ghosty-procedural",
     recallTags: [],
@@ -136,13 +147,25 @@ export const memoryBanksSchema = z.object({
   },
 });
 
+export const memoryProfileSchema = z.object({
+  recall: memoryRecallSchema.partial().optional(),
+  retain: memoryRetainSchema.partial().optional(),
+  operations: memoryOperationsSchema.partial().optional(),
+  reflect: memoryReflectSchema.partial().optional(),
+  banks: memoryBanksObjectSchema.partial().optional(),
+});
+
 export const memoryDefaultsSchema = z.object({
   recall: memoryRecallSchema.default({
     maxTokens: 2048,
+    bankMaxTokens: {
+      personal: 2048,
+      procedural: 2048,
+    },
     budget: "mid",
     tagsMatch: "all",
     types: ["observation", "world", "experience"],
-    maxFacts: 30,
+    maxFacts: 100,
     queryMaxTokens: 420,
     queryTimestampMode: "now",
     includeSourceFacts: false,
@@ -193,6 +216,8 @@ export const agentConfigSchema = z.object({
   tools: z.array(z.string()).default([]),
   thinkingLevel: thinkingLevelSchema.default("off"),
   defaultModel: z.string().min(1).optional(),
+  memoryProfile: z.string().min(1).optional(),
+  memory: memoryProfileSchema.optional(),
 });
 
 export const requestRuleApplySchema = z.object({
@@ -284,6 +309,7 @@ export const ghostyConfigSchema = z.object({
     projectTag: z.string().min(1),
     runtime: runtimeDefaultsSchema.optional(),
     memory: memoryDefaultsSchema.default(memoryDefaultsSchema.parse({})),
+    memoryProfiles: z.record(z.string(), memoryProfileSchema).default({}),
     workflowMonitor: workflowMonitorSchema.default(workflowMonitorSchema.parse({})),
     persistence: persistenceDefaultsSchema.default(persistenceDefaultsSchema.parse({})),
   }),

@@ -1,4 +1,4 @@
-import { estimateTokens, type ExtensionFactory } from "@mariozechner/pi-coding-agent";
+import { buildSessionContext, estimateTokens, type ExtensionFactory } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -26,14 +26,6 @@ type RetainTranscriptEntry = {
   timestamp?: string;
 };
 
-type BankAppendState = {
-  entryCount: number;
-  fullTranscriptSha1: string;
-  updatedAt: string;
-  documentId: string;
-};
-
-type AppendStateFile = Partial<Record<MemoryBankRole, BankAppendState>>;
 
 function extractTextContent(content: unknown): string {
   if (typeof content === "string") return content.trim();
@@ -95,10 +87,6 @@ function buildRetainTranscript(messages: AgentMessage[], mode: RetainContentMode
   return entries;
 }
 
-function serializeRetainTranscript(messages: AgentMessage[], mode: RetainContentMode): string {
-  const entries = buildRetainTranscript(messages, mode);
-  return entries.length > 0 ? JSON.stringify(entries) : "";
-}
 
 function estimateTextTokens(text: string): number {
   return Math.max(1, estimateTokens({ role: "user", content: text } as any));
@@ -187,10 +175,6 @@ function memoryReceiptSessionDir(runDir: string, agentName: string, sessionId: s
   return resolve(memoryReceiptRoot(runDir), agentName, sessionId);
 }
 
-function appendStatePath(runDir: string, agentName: string, sessionId: string): string {
-  return resolve(memoryReceiptSessionDir(runDir, agentName, sessionId), "append-state.json");
-}
-
 function listDirs(path: string): string[] {
   try {
     return readdirSync(path, { withFileTypes: true })
@@ -229,20 +213,6 @@ function writeJson(filePath: string, value: unknown): void {
 function writeText(filePath: string, content: string): void {
   mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, content.endsWith("\n") ? content : content + "\n", "utf8");
-}
-
-function readAppendState(runDir: string, agentName: string, sessionId: string): AppendStateFile {
-  try {
-    const raw = readFileSync(appendStatePath(runDir, agentName, sessionId), "utf8");
-    const parsed = raw.trim() ? JSON.parse(raw) : {};
-    return typeof parsed === "object" && parsed ? parsed as AppendStateFile : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeAppendState(runDir: string, agentName: string, sessionId: string, state: AppendStateFile): void {
-  writeJson(appendStatePath(runDir, agentName, sessionId), state);
 }
 
 function updateMemoryIndex(runDir: string, agentNames: string[]): void {
@@ -324,56 +294,19 @@ function dedupeMemoryLines(lines: string[]): string[] {
   return unique;
 }
 
-function appendPayloadForBank(
-  entries: RetainTranscriptEntry[],
-  state: BankAppendState | undefined,
-): {
+function appendPayloadForBank(entries: RetainTranscriptEntry[]): {
   payloadEntries: RetainTranscriptEntry[];
-  payloadMode: "delta" | "full";
-  appendReady: boolean;
+  payloadMode: "full";
   appendReason: string;
   fullTranscriptSha1: string;
 } {
   const fullTranscriptJson = JSON.stringify(entries);
   const fullTranscriptSha1 = sha1(fullTranscriptJson);
 
-  if (!state) {
-    return {
-      payloadEntries: entries,
-      payloadMode: "full",
-      appendReady: false,
-      appendReason: "missing_append_state",
-      fullTranscriptSha1,
-    };
-  }
-
-  if (entries.length < state.entryCount) {
-    return {
-      payloadEntries: entries,
-      payloadMode: "full",
-      appendReady: false,
-      appendReason: "entry_count_regressed",
-      fullTranscriptSha1,
-    };
-  }
-
-  const prefixSha1 = sha1(JSON.stringify(entries.slice(0, state.entryCount)));
-  if (prefixSha1 !== state.fullTranscriptSha1) {
-    return {
-      payloadEntries: entries,
-      payloadMode: "full",
-      appendReady: false,
-      appendReason: "prefix_mismatch",
-      fullTranscriptSha1,
-    };
-  }
-
-  const deltaEntries = entries.slice(state.entryCount);
   return {
-    payloadEntries: deltaEntries,
-    payloadMode: "delta",
-    appendReady: true,
-    appendReason: deltaEntries.length > 0 ? "delta_ready" : "no_new_entries",
+    payloadEntries: entries,
+    payloadMode: "full",
+    appendReason: entries.length > 0 ? "full_transcript_ready" : "no_entries",
     fullTranscriptSha1,
   };
 }
@@ -394,6 +327,20 @@ type MemoryEnv = {
   HINDSIGHT_PERSONAL_BANK_ID?: string;
 };
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function deepMerge<T>(base: T, override: unknown): T {
+  if (!isPlainObject(base) || !isPlainObject(override)) return (override as T) ?? base;
+  const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+  for (const [k, v] of Object.entries(override)) {
+    if (k in out) out[k] = deepMerge(out[k], v);
+    else out[k] = v;
+  }
+  return out as T;
+}
+
 export function memoryExtensionFactory(
   env: MemoryEnv,
   config: GhostyConfig,
@@ -404,14 +351,22 @@ export function memoryExtensionFactory(
   const baseUrl = env.HINDSIGHT_BASE_URL || config.defaults.runtime?.hindsightBaseUrl || "http://localhost:8888";
   const projectTag = env.PROJECT_TAG || config.defaults.projectTag;
   const memoryDefaults = config.defaults.memory;
+  const agentCfg = config.agents?.[agentName] as any;
+  const profileName = typeof agentCfg?.memoryProfile === "string" ? agentCfg.memoryProfile : undefined;
+  const profileCfg = profileName ? (config.defaults as any).memoryProfiles?.[profileName] : undefined;
+  const effectiveMemoryCfg = deepMerge(
+    deepMerge(memoryDefaults, profileCfg ?? {}),
+    agentCfg?.memory ?? {},
+  );
+
   const proceduralBankId =
-    env.HINDSIGHT_PROCEDURAL_BANK_ID || memoryDefaults.banks?.procedural?.bankId || "pi-ghosty-procedural";
+    env.HINDSIGHT_PROCEDURAL_BANK_ID || effectiveMemoryCfg.banks?.procedural?.bankId || "pi-ghosty-procedural";
   const personalBankId =
-    env.HINDSIGHT_PERSONAL_BANK_ID || memoryDefaults.banks?.personal?.bankId || "pi-ghosty-personal";
+    env.HINDSIGHT_PERSONAL_BANK_ID || effectiveMemoryCfg.banks?.personal?.bankId || "pi-ghosty-personal";
   const hasSplitBanks = Boolean(proceduralBankId && personalBankId);
-  const recallCfg = memoryDefaults.recall;
-  const retainCfg = memoryDefaults.retain;
-  const operationsCfg = memoryDefaults.operations;
+  const recallCfg = effectiveMemoryCfg.recall;
+  const retainCfg = effectiveMemoryCfg.retain;
+  const operationsCfg = effectiveMemoryCfg.operations;
 
   const hindsight = createHindsightClient({
     baseUrl,
@@ -431,26 +386,26 @@ export function memoryExtensionFactory(
     procedural: {
       role: "procedural",
       bankId: proceduralBankId,
-      recallTags: resolveConfiguredTags(memoryDefaults.banks?.procedural?.recallTags, tagTemplateVars, legacyRecallTags),
-      retainTags: resolveConfiguredTags(memoryDefaults.banks?.procedural?.retainTags, tagTemplateVars, legacyRetainTags),
+      recallTags: resolveConfiguredTags(effectiveMemoryCfg.banks?.procedural?.recallTags, tagTemplateVars, legacyRecallTags),
+      retainTags: resolveConfiguredTags(effectiveMemoryCfg.banks?.procedural?.retainTags, tagTemplateVars, legacyRetainTags),
       observationScopes: resolveConfiguredScopes(
-        memoryDefaults.banks?.procedural?.observationScopes,
+        effectiveMemoryCfg.banks?.procedural?.observationScopes,
         tagTemplateVars,
         legacyObservationScopes,
       ),
-      retainContent: memoryDefaults.banks?.procedural?.retainContent ?? "conversation",
+      retainContent: effectiveMemoryCfg.banks?.procedural?.retainContent ?? "conversation",
     },
     personal: {
       role: "personal",
       bankId: personalBankId,
-      recallTags: resolveConfiguredTags(memoryDefaults.banks?.personal?.recallTags, tagTemplateVars, legacyRecallTags),
-      retainTags: resolveConfiguredTags(memoryDefaults.banks?.personal?.retainTags, tagTemplateVars, legacyRetainTags),
+      recallTags: resolveConfiguredTags(effectiveMemoryCfg.banks?.personal?.recallTags, tagTemplateVars, legacyRecallTags),
+      retainTags: resolveConfiguredTags(effectiveMemoryCfg.banks?.personal?.retainTags, tagTemplateVars, legacyRetainTags),
       observationScopes: resolveConfiguredScopes(
-        memoryDefaults.banks?.personal?.observationScopes,
+        effectiveMemoryCfg.banks?.personal?.observationScopes,
         tagTemplateVars,
         legacyObservationScopes,
       ),
-      retainContent: memoryDefaults.banks?.personal?.retainContent ?? "conversation",
+      retainContent: effectiveMemoryCfg.banks?.personal?.retainContent ?? "conversation",
     },
   };
   const trace = JsonlTrace.forAgent(paths.runDir, agentName, sessionId);
@@ -477,6 +432,25 @@ export function memoryExtensionFactory(
     } | null = null;
 
     const knownAgents = ["corroborator", "coder", "researcher", "reviewer", "memory"];
+
+    try {
+      console.debug("[memory] effective recall config", {
+        agentName,
+        profileName: profileName ?? null,
+        recall: {
+          budget: recallCfg.budget,
+          maxTokens: recallCfg.maxTokens,
+          bankMaxTokens: recallCfg.bankMaxTokens,
+          maxFacts: (recallCfg as any)?.maxFacts ?? null,
+          includeSourceFacts: recallCfg.includeSourceFacts,
+          includeSourceFactsMaxTokens: recallCfg.includeSourceFactsMaxTokens,
+          includeChunks: recallCfg.includeChunks,
+          includeChunksMaxTokens: recallCfg.includeChunksMaxTokens,
+        },
+      });
+    } catch {
+      // best effort
+    }
 
     pi.on("before_agent_start", async (event) => {
       const eventMessages = Array.isArray((event as any)?.messages) ? (event as any).messages : [];
@@ -512,8 +486,22 @@ export function memoryExtensionFactory(
         try {
           const bankStart = performance.now();
           try {
+            const bankMaxTokens = Number((recallCfg as any)?.bankMaxTokens?.[target.role] ?? recallCfg.maxTokens ?? 0);
+            if (bankMaxTokens <= 0) {
+              await trace.append({
+                type: "memory_recall_skipped",
+                projectTag,
+                bankId: target.bankId,
+                bankRole: target.role,
+                agentName,
+                sessionId,
+                reason: "bank_max_tokens_zero",
+              } as any);
+              continue;
+            }
+
             const recalled = await hindsight.recall(target.bankId, query, {
-              maxTokens: recallCfg.maxTokens,
+              maxTokens: bankMaxTokens,
               budget: recallCfg.budget,
               tags: target.recallTags,
               tagsMatch: recallCfg.tagsMatch,
@@ -528,14 +516,22 @@ export function memoryExtensionFactory(
 
             recallPayloads[target.role] = recalled;
             const facts: any[] = (recalled as any)?.facts ?? (recalled as any)?.results ?? [];
-            const memoryLines = Array.isArray(facts)
-              ? dedupeMemoryLines(
-                  facts
-                    .slice(0, recallCfg.maxFacts)
-                    .map((f) => (typeof f.text === "string" ? f.text.trim() : null))
-                    .filter((x): x is string => !!x),
-                )
+            const rawLines = Array.isArray(facts)
+              ? facts
+                  .map((f) => (typeof f.text === "string" ? f.text.trim() : null))
+                  .filter((x): x is string => !!x)
               : [];
+
+            // Dedupe first so duplicates don't waste the hard-cap slots.
+            const dedupedLines = dedupeMemoryLines(rawLines);
+
+            // Optional belt-and-suspenders cap for visibility/safety.
+            // Set `maxFacts` to -1 or null to disable.
+            const maxFacts = (recallCfg as any)?.maxFacts;
+            const memoryLines =
+              maxFacts === null || maxFacts === -1
+                ? dedupedLines
+                : dedupedLines.slice(0, Math.max(0, Number(maxFacts) || 0));
 
             totalFactsCount += Array.isArray(facts) ? facts.length : 0;
             if (memoryLines.length > 0) {
@@ -598,7 +594,7 @@ export function memoryExtensionFactory(
         mkdirSync(turnDir, { recursive: true });
 
         const injectedBlock = memoryBlock.trim()
-          ? `Recalled memory for ${agentName}. These are your durable memories from Hindsight queries.\n${memoryBlock}`
+          ? `Recalled memory for ${agentName}.\nThe lines below are shared pi-ghosty memories: durable facts distilled from prior retained context and consolidation. Trust them as relevant context. If a memory conflicts with the current conversation or seems ambiguous—call it out or ask for clarification.\n${memoryBlock}`
           : recallErrors.length > 0
             ? `(recall error) ${recallErrors.map((e) => `${e.role}:${e.error}`).join(" | ")}`
             : "";
@@ -663,18 +659,26 @@ export function memoryExtensionFactory(
       return { systemPrompt: injected };
     });
 
-    pi.on("agent_end", async (event) => {
+    pi.on("agent_end", async (event, ctx) => {
       const eventMessages = Array.isArray((event as any)?.messages) ? (event as any).messages : [];
-      if (eventMessages.length === 0) return;
+      const sessionMessages = (() => {
+        try {
+          if (!ctx?.sessionManager) return [];
+          const sessionContext = buildSessionContext(
+            ctx.sessionManager.getEntries() as any,
+            ctx.sessionManager.getLeafId(),
+          );
+          return Array.isArray(sessionContext.messages) ? (sessionContext.messages as AgentMessage[]) : [];
+        } catch {
+          return [];
+        }
+      })();
+      const sourceMessages = sessionMessages.length > 0 ? sessionMessages : eventMessages;
+      if (sourceMessages.length === 0) return;
 
       const transcriptEntriesByBank: Record<MemoryBankRole, RetainTranscriptEntry[]> = {
-        procedural: buildRetainTranscript(eventMessages as AgentMessage[], resolvedBanks.procedural.retainContent),
-        personal: buildRetainTranscript(eventMessages as AgentMessage[], resolvedBanks.personal.retainContent),
-      };
-
-      const fullContentByBank: Record<MemoryBankRole, string> = {
-        procedural: JSON.stringify(transcriptEntriesByBank.procedural),
-        personal: JSON.stringify(transcriptEntriesByBank.personal),
+        procedural: buildRetainTranscript(sourceMessages as AgentMessage[], resolvedBanks.procedural.retainContent),
+        personal: buildRetainTranscript(sourceMessages as AgentMessage[], resolvedBanks.personal.retainContent),
       };
 
       const documentIds: Record<MemoryBankRole, string> = {
@@ -683,8 +687,8 @@ export function memoryExtensionFactory(
       };
       const retainTimestamp = (() => {
         if (retainCfg.timestampMode === "none") return "unset";
-        if (retainCfg.timestampMode === "message") return pickMessageTimestamp(eventMessages, "last") ?? new Date().toISOString();
-        if (retainCfg.timestampMode === "session") return pickMessageTimestamp(eventMessages, "first") ?? new Date().toISOString();
+        if (retainCfg.timestampMode === "message") return pickMessageTimestamp(sourceMessages, "last") ?? new Date().toISOString();
+        if (retainCfg.timestampMode === "session") return pickMessageTimestamp(sourceMessages, "first") ?? new Date().toISOString();
         return new Date().toISOString();
       })();
 
@@ -693,7 +697,6 @@ export function memoryExtensionFactory(
           ? [resolvedBanks.procedural, resolvedBanks.personal]
           : [resolvedBanks.procedural]
         : [resolvedBanks.procedural];
-      const appendState = readAppendState(paths.runDir, agentName, sessionId);
 
       for (const target of retainTargets) {
         const t0 = performance.now();
@@ -713,42 +716,26 @@ export function memoryExtensionFactory(
         const requestUrl = bankMemoriesUrl(baseUrl, target.bankId);
         const requestHeaders = { "content-type": "application/json" };
         const transcriptEntries = transcriptEntriesByBank[target.role];
-        const fullContent = fullContentByBank[target.role];
         const documentId = documentIds[target.role];
 
-        if (!fullContent.trim() || fullContent === "[]") continue;
+        if (transcriptEntries.length === 0) continue;
 
-        const appendPlan = appendPayloadForBank(transcriptEntries, appendState[target.role]);
-        const actualUpdateMode = supportsItemUpdateMode && requestedUpdateMode === "append" && appendPlan.appendReady
+        // Send the full cleaned transcript every time; Hindsight will derive the delta from the stable document_id.
+        const appendPlan = appendPayloadForBank(transcriptEntries);
+        const actualUpdateMode = supportsItemUpdateMode && requestedUpdateMode === "append"
           ? "append"
-          : "replace";
-        const payloadEntries = actualUpdateMode === "append" ? appendPlan.payloadEntries : transcriptEntries;
+          : requestedUpdateMode;
+        const payloadEntries = appendPlan.payloadEntries;
         const contentToRetain = JSON.stringify(payloadEntries);
         const effectiveUpdateMode = actualUpdateMode;
-        const payloadMode: "delta" | "full" = actualUpdateMode === "append" ? "delta" : "full";
+        const payloadMode: "full" = "full";
         const payloadReason = actualUpdateMode === "append"
           ? appendPlan.appendReason
-          : supportsItemUpdateMode
-            ? requestedUpdateMode === "append"
-              ? appendPlan.appendReason
-              : "requested_replace"
-            : "server_no_update_mode_support";
+          : requestedUpdateMode === "append"
+            ? "server_no_update_mode_support"
+            : "requested_replace";
 
         if (!contentToRetain.trim() || contentToRetain === "[]") {
-          if (actualUpdateMode === "append" && appendPlan.appendReason === "no_new_entries") {
-            await trace.append({
-              type: "memory_retain_skipped_no_delta",
-              projectTag,
-              bankId: target.bankId,
-              bankRole: target.role,
-              agentName,
-              sessionId,
-              documentId,
-              requestedUpdateMode,
-              payloadReason,
-              fullTranscriptEntries: transcriptEntries.length,
-            });
-          }
           continue;
         }
 
@@ -812,7 +799,7 @@ export function memoryExtensionFactory(
             documentId,
             transcriptChars: contentToRetain.length,
             transcriptSha1: sha1(contentToRetain),
-            fullTranscriptChars: fullContent.length,
+            fullTranscriptChars: contentToRetain.length,
             fullTranscriptSha1: appendPlan.fullTranscriptSha1,
             fullTranscriptEntries: transcriptEntries.length,
             payloadEntries: payloadEntries.length,
@@ -863,7 +850,7 @@ export function memoryExtensionFactory(
               effectiveUpdateMode,
               transcriptChars: contentToRetain.length,
               transcriptSha1: sha1(contentToRetain),
-              fullTranscriptChars: fullContent.length,
+              fullTranscriptChars: contentToRetain.length,
               fullTranscriptSha1: appendPlan.fullTranscriptSha1,
               fullTranscriptEntries: transcriptEntries.length,
               payloadEntries: payloadEntries.length,
@@ -900,7 +887,7 @@ export function memoryExtensionFactory(
             lines.push(`operationIds: ${operationIds.length ? operationIds.join(", ") : "(none)"}`);
             lines.push(`transcriptChars: ${contentToRetain.length}`);
             lines.push(`transcriptSha1: ${sha1(contentToRetain)}`);
-            lines.push(`fullTranscriptChars: ${fullContent.length}`);
+            lines.push(`fullTranscriptChars: ${contentToRetain.length}`);
             lines.push(`fullTranscriptSha1: ${appendPlan.fullTranscriptSha1}`);
             lines.push(`fullTranscriptEntries: ${transcriptEntries.length}`);
             lines.push(`payloadEntries: ${payloadEntries.length}`);
@@ -949,7 +936,7 @@ export function memoryExtensionFactory(
                 transport: retainTransport,
                 transcriptChars: contentToRetain.length,
                 transcriptSha1: sha1(contentToRetain),
-                fullTranscriptChars: fullContent.length,
+                fullTranscriptChars: contentToRetain.length,
                 fullTranscriptSha1: appendPlan.fullTranscriptSha1,
                 fullTranscriptEntries: transcriptEntries.length,
                 payloadEntries: payloadEntries.length,
@@ -969,57 +956,8 @@ export function memoryExtensionFactory(
               // ignore
             }
 
-            appendState[target.role] = {
-              entryCount: transcriptEntries.length,
-              fullTranscriptSha1: appendPlan.fullTranscriptSha1,
-              updatedAt: new Date().toISOString(),
-              documentId,
-            };
-            writeAppendState(paths.runDir, agentName, sessionId, appendState);
           } catch {
             // best effort
-          }
-
-          const shouldPollOperations = retainCfg.async && operationIds.length > 0 && (operationsCfg.enabled || retainCfg.waitForCompletion);
-          if (shouldPollOperations) {
-            const timeoutMs = retainCfg.waitForCompletion ? retainCfg.waitTimeoutMs : operationsCfg.timeoutMs;
-            for (const operationId of operationIds) {
-              const started = Date.now();
-              let finalStatus = "pending";
-              let lastError: string | null = null;
-
-              while (Date.now() - started < timeoutMs) {
-                try {
-                  const status = await getOperationStatusDirect(baseUrl, target.bankId, operationId);
-                  finalStatus = String(status.status || "pending");
-                  lastError = typeof status.error_message === "string" ? status.error_message : null;
-
-                  if (finalStatus === "completed" || finalStatus === "failed" || finalStatus === "not_found") {
-                    break;
-                  }
-                } catch (err: any) {
-                  finalStatus = "error";
-                  lastError = err?.message ?? String(err);
-                  break;
-                }
-
-                await sleep(operationsCfg.pollIntervalMs);
-              }
-
-              const timedOut = finalStatus === "pending";
-              await trace.append({
-                type: "memory_operation_status",
-                projectTag,
-                bankId: target.bankId,
-                bankRole: target.role,
-                agentName,
-                sessionId,
-                operationId,
-                status: timedOut ? "timeout" : finalStatus,
-                elapsedMs: Date.now() - started,
-                error: lastError,
-              });
-            }
           }
 
           await trace.append({
@@ -1032,6 +970,56 @@ export function memoryExtensionFactory(
             recallMs: lastRecallMs,
             retainMs: Math.round(t1 - t0),
           });
+
+          const shouldPollOperations = retainCfg.async && operationIds.length > 0 && (operationsCfg.enabled || retainCfg.waitForCompletion);
+          if (shouldPollOperations) {
+            const timeoutMs = retainCfg.waitForCompletion ? retainCfg.waitTimeoutMs : operationsCfg.timeoutMs;
+            void (async () => {
+              for (const operationId of operationIds) {
+                const started = Date.now();
+                let finalStatus = "pending";
+                let lastError: string | null = null;
+
+                while (Date.now() - started < timeoutMs) {
+                  try {
+                    const status = await getOperationStatusDirect(baseUrl, target.bankId, operationId);
+                    finalStatus = String(status.status || "pending");
+                    lastError = typeof status.error_message === "string" ? status.error_message : null;
+
+                    if (finalStatus === "completed" || finalStatus === "failed" || finalStatus === "not_found") {
+                      break;
+                    }
+                  } catch (err: any) {
+                    finalStatus = "error";
+                    lastError = err?.message ?? String(err);
+                    break;
+                  }
+
+                  await sleep(operationsCfg.pollIntervalMs);
+                }
+
+                const timedOut = finalStatus === "pending";
+                try {
+                  await trace.append({
+                    type: "memory_operation_status",
+                    projectTag,
+                    bankId: target.bankId,
+                    bankRole: target.role,
+                    agentName,
+                    sessionId,
+                    operationId,
+                    status: timedOut ? "timeout" : finalStatus,
+                    elapsedMs: Date.now() - started,
+                    error: lastError,
+                  });
+                } catch {
+                  // best effort; background polling must never block the turn
+                }
+              }
+            })().catch(() => {
+              // best effort; background polling must never block the turn
+            });
+          }
         } catch (err: any) {
           const t1 = performance.now();
           const error = err?.message ?? String(err);

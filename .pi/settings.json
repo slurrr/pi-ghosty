@@ -1,17 +1,14 @@
 {
   "enabledModels": [
-    "openai-codex/gpt-5.2",
-    "openai-codex/gpt-5.3-codex",
-    "openai-codex/gpt-5.4",
-    "openai-codex/gpt-5.4-mini",
-    "google-gemini-cli/gemini-2.5-flash",
-    "google-gemini-cli/gemini-2.5-pro",
-    "my-google-ai-studio/gemini-2.5-pro",
-    "my-google-ai-studio/gemini-3.1-pro-preview",
-    "my-google-ai-studio/gemini-3-flash-preview",
-    "vllm/omnicoder-9b",
-    "vllm/gemma-4-e4b",
-    "vllm/qwen3.5_9b",
-    "vllm/gpt-oss-20b"
+    "ass/my-google-ai-studio/gemini-3.1-pro-preview",
+    "ass/my-google-ai-studio/gemini-3-flash-preview",
+    "ass/vllm/gemma-4-e4b-memory",
+    "ass/google-gemini-cli/gemini-3-flash-preview",
+    "ass/google-gemini-cli/gemini-3.1-pro-preview",
+    "ass/openai-codex/gpt-5.2",
+    "ass/openai-codex/gpt-5.3-codex",
+    "ass/openai-codex/gpt-5.4",
+    "ass/openai-codex/gpt-5.4-mini",
+    "vllm/*"
   ]
 }

@@ -16,6 +16,10 @@
     "memory": {
       "recall": {
         "maxTokens": 2048,
+        "bankMaxTokens": {
+          "personal": 2048,
+          "procedural": 2048
+        },
         "budget": "mid",
         "tagsMatch": "all",
         "types": ["observation", "world", "experience"],
@@ -58,40 +62,44 @@
           "recallTags": [],
           "retainTags": ["{projectTag}"],
           "observationScopes": [["{projectTag}"]],
-          "retainContent": "conversation_with_tools",
-          "hindsight": {
-            "retainExtractionMode": "concise",
-            "retainMission": "Retain durable facts about projects, tasks, systems, architecture, tooling behavior, recurring workflow constraints, implementation decisions, and troubleshooting facts. Ignore greetings, filler, casual banter, and non-durable chatter.",
-            "observationsMission": "Observations are durable facts about the project and system: stable decisions, recurring workflow constraints, architecture choices, tooling behavior, and reusable operating knowledge. Ignore transient discussion and one-off conversational framing.",
-            "consolidationLlmBatchSize": 8,
-            "consolidationMaxMemoriesPerRound": 100,
-            "consolidationSourceFactsMaxTokens": -1,
-            "consolidationSourceFactsMaxTokensPerObservation": 256,
-            "maxObservationsPerScope": -1,
-            "recallIncludeChunks": false,
-            "recallMaxTokens": 2048,
-            "recallChunksMaxTokens": 1000
-          }
+          "retainContent": "conversation_with_tools"
         },
         "personal": {
           "bankId": "pi-ghosty-personal",
           "recallTags": ["user:seth"],
           "retainTags": ["user:seth"],
           "observationScopes": [["user:seth"]],
-          "retainContent": "conversation",
-          "hindsight": {
-            "retainExtractionMode": "concise",
-            "retainMission": "Retain durable facts about Seth's preferences, recurring habits, stable interaction rules, long-lived workflow choices, and persistent constraints. Ignore project/task/system specifics, filler, greetings, emotional venting, and one-off chatter.",
-            "observationsMission": "Observations are durable facts about Seth: preferences, habits, recurring workflow choices, interaction rules, and stable constraints that remain useful across sessions. Ignore transient state and one-off conversational details.",
-            "consolidationLlmBatchSize": 8,
-            "consolidationMaxMemoriesPerRound": 100,
-            "consolidationSourceFactsMaxTokens": -1,
-            "consolidationSourceFactsMaxTokensPerObservation": 256,
-            "maxObservationsPerScope": -1,
-            "recallIncludeChunks": false,
-            "recallMaxTokens": 2048,
-            "recallChunksMaxTokens": 1000
-          }
+          "retainContent": "conversation"
+        }
+      }
+    },
+    "memoryProfiles": {
+      "corroborator": {
+        "recall": {
+          "budget": "mid",
+          "bankMaxTokens": {
+            "personal": 1536,
+            "procedural": 1024
+          },
+          "includeSourceFacts": true,
+          "includeSourceFactsMaxTokens": 256,
+          "includeChunks": false,
+          "includeChunksMaxTokens": 0,
+          "maxFacts": -1
+        }
+      },
+      "worker": {
+        "recall": {
+          "budget": "high",
+          "bankMaxTokens": {
+            "personal": 0,
+            "procedural": 8192
+          },
+          "includeSourceFacts": true,
+          "includeSourceFactsMaxTokens": 4096,
+          "includeChunks": true,
+          "includeChunksMaxTokens": 8192,
+          "maxFacts": -1
         }
       }
     },
@@ -109,32 +117,38 @@
     "corroborator": {
       "tools": ["read", "grep", "find", "ls", "delegate", "delegate_batch", "write", "edit", "bash"],
       "thinkingLevel": "medium",
-      "defaultModel": "google-gemini-cli/gemini-3-flash-preview"
+      "defaultModel": "google-gemini-cli/gemini-3-flash-preview",
+      "memoryProfile": "corroborator"
     },
     "coder": {
       "tools": ["read", "grep", "find", "ls", "edit", "write", "bash"],
       "thinkingLevel": "medium",
-      "defaultModel": "openai-codex/gpt-5.3-codex"
+      "defaultModel": "openai-codex/gpt-5.3-codex",
+      "memoryProfile": "worker"
     },
     "researcher": {
       "tools": ["read", "grep", "find", "ls", "write", "edit"],
       "thinkingLevel": "medium",
-      "defaultModel": "openai-codex/gpt-5.4-mini"
+      "defaultModel": "openai-codex/gpt-5.4-mini",
+      "memoryProfile": "worker"
     },
     "pilot": {
       "tools": ["read", "browser_open", "browser_snapshot", "browser_eval"],
       "thinkingLevel": "medium",
-      "defaultModel": "openai-codex/gpt-5.4-mini"
+      "defaultModel": "openai-codex/gpt-5.4-mini",
+      "memoryProfile": "worker"
     },
     "reviewer": {
       "tools": ["read", "grep", "find", "ls", "write", "edit"],
       "thinkingLevel": "medium",
-      "defaultModel": "openai-codex/gpt-5.4-mini"
+      "defaultModel": "openai-codex/gpt-5.4-mini",
+      "memoryProfile": "worker"
     },
     "memory": {
       "tools": ["read", "grep", "find", "ls"],
       "thinkingLevel": "medium",
-      "defaultModel": "vllm/omnicoder-9b"
+      "defaultModel": "vllm/omnicoder-9b",
+      "memoryProfile": "worker"
     }
   },
   "requestRules": [
