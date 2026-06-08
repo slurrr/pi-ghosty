@@ -69,7 +69,55 @@ The system uses Hindsight to provide agents with long-term memory.
 
 ---
 
-## 5. Tooling & Automation
+## 5. Agent Personas & Prompt Engineering
+
+A core function of the repository is to define and manage the distinct personas of the `corroborator` and its peers. This is achieved through a systematic, multi-layered approach to modifying the `pi` agent's base system prompt.
+
+### 5.1. General Prompt Sanitization
+
+Before any role-specific modifications are made, the system performs two general cleanup steps on the base system prompt provided by `pi`:
+
+1.  **Strip Project Context**: The system removes the entire "# Project Context" section that `pi` injects from local `AGENTS.md` files. This is a deliberate choice to ensure the agent's core identity is defined by this repository's configuration, not by ambient project files.
+2.  **Clean Previous Injections**: It removes any leftover markers or content from previous `pi-ghosty` prompt modifications to ensure a clean slate for every turn.
+
+### 5.2. Role-Specific Modifications
+
+After sanitization, the system applies modifications based on the agent's role for the current session. This process has two parts: a first-paragraph replacement for non-coder peers, and the appendage of role-specific content.
+
+#### 5.2.1. The `corroborator`
+
+-   **First-Paragraph Replacement**: The initial paragraph of the system prompt is replaced with a directive focused on concise, direct interaction:
+    > "answer only the smallest useful thing. when the useful answer is landed, stop immediately. do not add a victory lap, recap, or extra framing. leave room for the user to continue."
+-   **Appended Content**: The contents of the markdown files in `peers/corroborator/` are concatenated and appended to the prompt. These files (`IDENTITY.md`, `SOUL.md`, `USER.md`, `CORROBORATOR.md`) define its core personality, its relationship with the user, and its operational mandate.
+
+#### 5.2.2. The `researcher`
+
+-   **First-Paragraph Replacement**: The first paragraph is replaced with a clear role definition:
+    > "You are the researcher for an ai engineering team. Complete tasks as delegated. Focus on finding relevant information and insights from the web, documentation, and code, and report back concrete findings and summaries to the corroborator. Use the .pi/skills/peer-report/SKILL.md file for guidance."
+-   **Appended Content**: The content from `peers/researcher/` (`00-role.md`, `01-peer-report.md`) is appended, reinforcing its role and reporting duties.
+
+#### 5.2.3. The `reviewer`
+
+-   **First-Paragraph Replacement**: The first paragraph is replaced with:
+    > "You are the reviewer peer for an ai engineering team. Review proposed changes for correctness, safety, and scope drift, and report concrete issues and a short checklist back to the corroborator."
+-   **Appended Content**: The content from `peers/reviewer/` (`00-role.md`, `01-peer-report.md`) is appended.
+
+#### 5.2.4. The `memory` Peer
+
+-   **First-Paragraph Replacement**: The first paragraph is replaced with:
+    > "You are the memory peer for an ai engineering team. Focus on long-term memory behavior (recall/retain, tags, scopes, observations) and report recommendations back to the corroborator."
+-   **Appended Content**: The content from `peers/memory/` (`00-role.md`, `01-peer-report.md`) is appended.
+
+#### 5.2.5. The `coder`
+
+-   **First-Paragraph Replacement**: The `coder` is the exception; its first paragraph is **not** replaced. It retains the original `pi` system prompt's opening, "You are an expert coding assistant...".
+-   **Appended Content**: The content from `peers/coder/` (`00-role.md`, `01-peer-report.md`) is appended.
+
+### 5.3. Shared System-Wide Content
+
+Finally, after the role-specific modifications, the content of `.pi/APPEND_SYSTEM.md` is appended for **all** roles. This file contains shared directives and contracts that apply to every agent in the system, ensuring consistent behavior across the team.
+
+## 6. Tooling & Automation
 
 ### 5.1. Current Implementation
 
